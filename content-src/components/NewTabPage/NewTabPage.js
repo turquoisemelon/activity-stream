@@ -2,10 +2,11 @@ const React = require("react");
 const {connect} = require("react-redux");
 const {selectNewTabSites} = require("selectors/selectors");
 const TopSites = require("components/TopSites/TopSites");
-const {GroupedActivityFeed} = require("components/ActivityFeed/ActivityFeed");
+const GroupedActivityFeed = require("components/ActivityFeed/ActivityFeed");
 const Spotlight = require("components/Spotlight/Spotlight");
 const Search = require("components/Search/Search");
 const {actions} = require("actions/action-manager");
+const {Link} = require("react-router");
 
 const NewTabPage = React.createClass({
   // TODO: Replace with real search api via addon
@@ -34,6 +35,8 @@ const NewTabPage = React.createClass({
           </section>
         </div>
       </div>
+
+      <Link className="debug-link" to="/debug">debug</Link>
     </main>);
   }
 });
