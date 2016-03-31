@@ -24,6 +24,7 @@ The Activity Stream addon sends two distinct types of pings to the backend (HTTP
   "total_history_size": 9,
   "ua": "python-requests/2.9.1",
   "unload_reason": "close",
+  "page": "newtab or timeline",
 }
 ```
 
@@ -31,16 +32,18 @@ The Activity Stream addon sends two distinct types of pings to the backend (HTTP
 
 ```json
 {
+  
+  "source": "top sites, or bookamrks, or...",
+  "action_position": 3,
+  "event": "click or scroll or search or delete",
+  "page": "newtab or timeline",
   "action": "activity_stream_event",
-  "action_position": 4,
   "addon_version": "1.0.0",
   "client_id": "374dc4d8-0cb2-4ac5-a3cf-c5a9bc3c602e",
-  "date": "2016-03-07",
-  "event": "delete",
-  "ip": "10.192.171.13",
   "locale": "en-US",
-  "source": "top_sites",
   "tab_id": "1-3",
+  "date": "2016-03-07",
+  "ip": "10.192.171.13",
   "timestamp": 1457396660000,
   "ua": "python-requests/2.9.1",
 }
@@ -49,7 +52,7 @@ The Activity Stream addon sends two distinct types of pings to the backend (HTTP
 
 | KEY | DESCRIPTION | &nbsp; |
 |-----|-------------|:-----:|
-| `action` | Always `activity_stream`. | :one:
+| `action` | Either `activity_stream_event` or `activity_stream_session`. | :one:
 | `addon_version` | The version of the Activity Stream addon. | :one:
 | `click_position` | The index of the element in the `source` that was clicked. | :one:
 | `client_id` | An identifier for this client. | :one:
