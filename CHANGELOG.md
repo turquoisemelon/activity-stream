@@ -1,3 +1,41 @@
+<a name="1.0.8"></a>
+## 1.0.8 (2016-04-07)
+
+* 1.0.7 changelog ([f34b8e7](https://github.com/mozilla/activity-streams/commit/f34b8e7))
+* 1.0.8 ([7e0bc5a](https://github.com/mozilla/activity-streams/commit/7e0bc5a))
+* chore(addon): #468 Only store embedly data in the cache ([0b1f89e](https://github.com/mozilla/activity-streams/commit/0b1f89e))
+* chore(proxy): #463 change embedly proxy target to staging environment ([bc5b149](https://github.com/mozilla/activity-streams/commit/bc5b149))
+* chore(test): Add images to karma, fix warnings ([08fffef](https://github.com/mozilla/activity-streams/commit/08fffef))
+* chore(tests): rename ActivityStream tests to include its name ([1e0d410](https://github.com/mozilla/activity-streams/commit/1e0d410))
+* fix(addon): #468 Prioritize new data in getCachedLinks ([8cca0b3](https://github.com/mozilla/activity-streams/commit/8cca0b3))
+* fix(cache): #475 fix infinite cache rebuild timeout for Preview Provider with refactor ([5ae80d3](https://github.com/mozilla/activity-streams/commit/5ae80d3))
+* fix(caching): make preview cache repopulation deterministic ([02f89af](https://github.com/mozilla/activity-streams/commit/02f89af))
+* fix(telemetry): #475 remove observer only when needed in TabTracker ([b8a85ec](https://github.com/mozilla/activity-streams/commit/b8a85ec))
+* feat(content): #387 Track user events ([dfc951e](https://github.com/mozilla/activity-streams/commit/dfc951e))
+* feat(content): #392 Blocking for spotlight and top sites ([6fdef5d](https://github.com/mozilla/activity-streams/commit/6fdef5d))
+
+
+
+<a name="1.0.7"></a>
+## 1.0.7 (2016-04-04)
+
+* 1.0.6 changelog ([a304156](https://github.com/mozilla/activity-streams/commit/a304156))
+* 1.0.7 ([5e2656a](https://github.com/mozilla/activity-streams/commit/5e2656a))
+* feat(addon): #258 Implement embedly client in the addon ([e860311](https://github.com/mozilla/activity-streams/commit/e860311))
+
+
+
+<a name="1.0.6"></a>
+## 1.0.6 (2016-04-04)
+
+* 1.0.5 changelog ([f4ef71e](https://github.com/mozilla/activity-streams/commit/f4ef71e))
+* 1.0.6 ([f7d5aa1](https://github.com/mozilla/activity-streams/commit/f7d5aa1))
+* Revert "critical style fixes for april 1 release" ([e999e7f](https://github.com/mozilla/activity-streams/commit/e999e7f))
+* chore(readme): #358 Update data dictionary ([cd6e686](https://github.com/mozilla/activity-streams/commit/cd6e686))
+* feature(addon): #427 Addon handling of UX user event notifications. ([a9af8f4](https://github.com/mozilla/activity-streams/commit/a9af8f4))
+
+
+
 <a name="1.0.5"></a>
 ## 1.0.5 (2016-04-01)
 

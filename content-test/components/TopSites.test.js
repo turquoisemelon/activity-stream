@@ -2,10 +2,12 @@ const assert = require("chai").assert;
 const TestUtils = require("react-addons-test-utils");
 const React = require("react");
 const ReactDOM = require("react-dom");
+const {overrideConsoleError} = require("test/test-utils");
 
 const ConnectedTopSites = require("components/TopSites/TopSites");
 const {TopSites} = ConnectedTopSites;
 const SiteIcon = require("components/SiteIcon/SiteIcon");
+const am = require("common/action-manager");
 
 const fakeProps = {
   sites: [
@@ -36,7 +38,9 @@ describe("TopSites", () => {
 
   it("should not throw if missing props", () => {
     assert.doesNotThrow(() => {
+      const restore = overrideConsoleError();
       TestUtils.renderIntoDocument(<TopSites sites={[{}]} />);
+      restore();
     });
   });
 
@@ -57,6 +61,19 @@ describe("TopSites", () => {
       assert.equal(linkEls.length, fakeProps.sites.length);
       assert.include(linkEls[0].href, fakeProps.sites[0].url);
       assert.include(linkEls[1].href, fakeProps.sites[1].url);
+    });
+  });
+
+  describe("actions", () => {
+    it("should fire a block action when delete button is clicked", done => {
+      function dispatch(a) {
+        if (a.type === am.type("BLOCK_URL")) {
+          assert.equal(a.data, fakeProps.sites[0].url);
+          done();
+        }
+      }
+      const instance = TestUtils.renderIntoDocument(<TopSites dispatch={dispatch} sites={fakeProps.sites} />);
+      TestUtils.Simulate.click(TestUtils.scryRenderedDOMComponentsWithClass(instance, "tile-close-icon")[0]);
     });
   });
 

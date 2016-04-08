@@ -1,5 +1,6 @@
 // This has to be relative so the firefox add-on side can read the path
 const ActionManager = require("./ActionManager");
+const eventConstants = require("./event-constants");
 
 const am = new ActionManager([
   "TOP_FRECENT_SITES_REQUEST",
@@ -12,6 +13,7 @@ const am = new ActionManager([
   "RECENT_LINKS_RESPONSE",
   "FRECENT_LINKS_REQUEST",
   "FRECENT_LINKS_RESPONSE",
+  "BLOCK_URL",
   "NOTIFY_HISTORY_DELETE",
   "NOTIFY_PERFORM_SEARCH",
   "RECEIVE_CURRENT_ENGINE",
@@ -19,7 +21,7 @@ const am = new ActionManager([
   "SEARCH_STATE_RESPONSE",
   "NOTIFY_ROUTE_CHANGE",
   "NOTIFY_PERFORMANCE",
-  "NEW_USER_EVENT",
+  "NOTIFY_USER_EVENT"
 ]);
 
 // This is a a set of actions that have sites in them,
@@ -104,6 +106,14 @@ function RequestSearchState() {
   return RequestExpect("SEARCH_STATE_REQUEST", "SEARCH_STATE_RESPONSE");
 }
 
+function BlockUrl(url) {
+  alert("We're still working on this feature. Thanks for your patience!");
+  return {
+    type: "BLOCK_URL",
+    data: url
+  };
+}
+
 function NotifyHistoryDelete(data) {
   return Notify("NOTIFY_HISTORY_DELETE", data);
 }
@@ -116,8 +126,21 @@ function NotifyRouteChange(data) {
   return Notify("NOTIFY_ROUTE_CHANGE", data);
 }
 
-function NotifyTelemetry(data) {
+function NotifyPerf(data) {
   return Notify("NOTIFY_PERFORMANCE", data);
+}
+
+function NotifyEvent(data) {
+  if (!eventConstants.pages.has(data.page)) {
+    throw new Error(`${data.page} is not a valid page`);
+  }
+  if (!eventConstants.events.has(data.event)) {
+    throw new Error(`${data.event} is not a valid event type`);
+  }
+  if (data.source && !eventConstants.sources.has(data.source)) {
+    throw new Error(`${data.source} is not a valid source`);
+  }
+  return Notify("NOTIFY_USER_EVENT", data);
 }
 
 am.defineActions({
@@ -131,10 +154,12 @@ am.defineActions({
   RequestMoreRecentLinks,
   RequestFrecentLinks,
   RequestSearchState,
+  BlockUrl,
   NotifyHistoryDelete,
   NotifyPerformSearch,
   NotifyRouteChange,
-  NotifyTelemetry,
+  NotifyPerf,
+  NotifyEvent
 });
 
 module.exports = am;
