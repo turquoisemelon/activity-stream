@@ -42,7 +42,7 @@ const NewTabPage = React.createClass({
           </section>
 
           <section>
-            <Spotlight page={PAGE_NAME} sites={props.Spotlight.rows} />
+            <Spotlight page={PAGE_NAME} sites={props.Highlights.rows} />
           </section>
 
           <section>
@@ -61,7 +61,7 @@ const NewTabPage = React.createClass({
 
 NewTabPage.propTypes = {
   TopSites: React.PropTypes.object.isRequired,
-  Spotlight: React.PropTypes.object.isRequired,
+  Highlights: React.PropTypes.object.isRequired,
   TopActivity: React.PropTypes.object.isRequired,
   dispatch: React.PropTypes.func.isRequired
 };

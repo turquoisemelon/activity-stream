@@ -93,6 +93,7 @@ module.exports.selectNewTabSites = createSelector(
     return {
       TopSites: Object.assign({}, TopSites, {rows: topSitesRows}),
       Spotlight: Object.assign({}, FrecentHistory, {rows: spotlightRows}),
+      Highlights: Object.assign({}, Highlights),
       TopActivity: Object.assign({}, History, {rows: topActivityRows}),
       isReady: TopSites.init && FrecentHistory.init && History.init && Highlights.init
     };
