@@ -1,8 +1,12 @@
 .grouped-activity-feed {
-  > div {
+  .group {
     border-bottom: solid 1px $faintest-black;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
 
     &:last-child {
+      padding-bottom: 0;
+      margin-bottom: 0;
       border-bottom: 0;
     }
   }
@@ -85,7 +89,7 @@
     width: 18px;
     position: absolute;
     top: 19px;
-    left: 8px;
+    left: $feed-gutter-h - 2;
   }
 
   .action-items-container {
@@ -128,6 +132,7 @@
     }
   }
 
+  &.fixed,
   &:hover {
     background: $feed-hover-color;
     border: 1px solid $faintest-black;

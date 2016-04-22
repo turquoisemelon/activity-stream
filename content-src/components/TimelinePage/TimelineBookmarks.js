@@ -1,5 +1,6 @@
 const React = require("react");
 const {connect} = require("react-redux");
+const {selectBookmarks} = require("selectors/selectors");
 const GroupedActivityFeed = require("components/ActivityFeed/ActivityFeed");
 const {RequestMoreBookmarks, NotifyEvent} = require("common/action-manager").actions;
 const LoadMore = require("components/LoadMore/LoadMore");
@@ -23,7 +24,14 @@ const TimelineBookmarks = React.createClass({
   render() {
     const props = this.props;
     return (<div className="wrapper">
-      <GroupedActivityFeed title="Just now" sites={props.Bookmarks.rows} length={20} dateKey="bookmarkDateCreated" page={PAGE_NAME} />
+      <GroupedActivityFeed
+        title="Just now"
+        sites={props.Bookmarks.rows}
+        length={20}
+        dateKey="bookmarkDateCreated"
+        page={PAGE_NAME}
+        showDateHeadings={true}
+         />
       <LoadMore
         loading={props.Bookmarks.isLoading}
         hidden={!props.Bookmarks.canLoadMore || !props.Bookmarks.rows.length}
@@ -37,10 +45,6 @@ TimelineBookmarks.propTypes = {
   Bookmarks: React.PropTypes.object.isRequired
 };
 
-module.exports = connect(state => {
-  return {
-    Bookmarks: state.Bookmarks
-  };
-})(TimelineBookmarks);
+module.exports = connect(selectBookmarks)(TimelineBookmarks);
 
 module.exports.TimelineBookmarks = TimelineBookmarks;

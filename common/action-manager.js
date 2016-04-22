@@ -13,8 +13,11 @@ const am = new ActionManager([
   "RECENT_LINKS_RESPONSE",
   "FRECENT_LINKS_REQUEST",
   "FRECENT_LINKS_RESPONSE",
+  "HIGHLIGHTS_LINKS_REQUEST",
+  "HIGHLIGHTS_LINKS_RESPONSE",
   "BLOCK_URL",
   "NOTIFY_HISTORY_DELETE",
+  "NOTIFY_HISTORY_DELETE_CANCELLED",
   "NOTIFY_PERFORM_SEARCH",
   "RECEIVE_CURRENT_ENGINE",
   "SEARCH_STATE_REQUEST",
@@ -30,7 +33,8 @@ am.ACTIONS_WITH_SITES = new Set([
   "TOP_FRECENT_SITES_RESPONSE",
   "RECENT_BOOKMARKS_RESPONSE",
   "RECENT_LINKS_RESPONSE",
-  "FRECENT_LINKS_RESPONSE"
+  "FRECENT_LINKS_RESPONSE",
+  "HIGHLIGHTS_LINKS_RESPONSE",
 ].map(type => am.type(type)));
 
 function Notify(type, data) {
@@ -102,6 +106,10 @@ function RequestFrecentLinks() {
   return RequestExpect("FRECENT_LINKS_REQUEST", "FRECENT_LINKS_RESPONSE");
 }
 
+function RequestHighlightsLinks() {
+  return RequestExpect("HIGHLIGHTS_LINKS_REQUEST", "HIGHLIGHTS_LINKS_RESPONSE");
+}
+
 function RequestSearchState() {
   return RequestExpect("SEARCH_STATE_REQUEST", "SEARCH_STATE_RESPONSE");
 }
@@ -115,7 +123,11 @@ function BlockUrl(url) {
 }
 
 function NotifyHistoryDelete(data) {
-  return Notify("NOTIFY_HISTORY_DELETE", data);
+  if (confirm("Are you sure you want to delete this from your entire history? This action cannot be undone.")) {
+    return Notify("NOTIFY_HISTORY_DELETE", data);
+  } else {
+    return {type: "NOTIFY_HISTORY_DELETE_CANCELLED"};
+  }
 }
 
 function NotifyPerformSearch(data) {
@@ -153,6 +165,7 @@ am.defineActions({
   RequestRecentLinks,
   RequestMoreRecentLinks,
   RequestFrecentLinks,
+  RequestHighlightsLinks,
   RequestSearchState,
   BlockUrl,
   NotifyHistoryDelete,

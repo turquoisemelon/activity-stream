@@ -1,7 +1,7 @@
 {
   "name": "activity-streams",
   "description": "A feed-based view on user history",
-  "version": "1.0.8",
+  "version": "1.0.11",
   "author": "Mozilla (https://mozilla.org/)",
   "bugs": {
     "url": "https://github.com/mozilla/activity-streams/issues"
@@ -157,5 +157,8 @@
   },
   "title": "activity-streams-experiment",
   "updateLink": "https://moz-activity-streams.s3.amazonaws.com/dist/activity-streams-latest.xpi",
-  "updateURL": "https://moz-activity-streams.s3.amazonaws.com/dist/update.rdf"
+  "updateURL": "https://moz-activity-streams.s3.amazonaws.com/dist/update.rdf",
+  "permissions": {
+    "private-browsing": true
+  }
 }

@@ -1,6 +1,6 @@
 const React = require("react");
 const {connect} = require("react-redux");
-const {selectSpotlight} = require("selectors/selectors");
+const {selectHistory} = require("selectors/selectors");
 const {RequestMoreRecentLinks, NotifyEvent} = require("common/action-manager").actions;
 const GroupedActivityFeed = require("components/ActivityFeed/ActivityFeed");
 const Spotlight = require("components/Spotlight/Spotlight");
@@ -26,7 +26,11 @@ const TimelineHistory = React.createClass({
     const props = this.props;
     return (<div className="wrapper">
       <Spotlight page={PAGE_NAME} sites={props.Spotlight.rows} />
-      <GroupedActivityFeed title="Just now" sites={props.History.rows} page={PAGE_NAME} />
+      <GroupedActivityFeed
+        title="Just now"
+        sites={props.History.rows}
+        page={PAGE_NAME}
+        showDateHeadings={true} />
       <LoadMore loading={props.History.isLoading} hidden={!props.History.canLoadMore || !props.History.rows.length} onClick={this.getMore}
         label="See more activity"/>
     </div>);
@@ -38,11 +42,6 @@ TimelineHistory.propTypes = {
   History: React.PropTypes.object.isRequired
 };
 
-module.exports = connect(state => {
-  return {
-    Spotlight: selectSpotlight(state),
-    History: state.History
-  };
-})(TimelineHistory);
+module.exports = connect(selectHistory)(TimelineHistory);
 
 module.exports.TimelineHistory = TimelineHistory;

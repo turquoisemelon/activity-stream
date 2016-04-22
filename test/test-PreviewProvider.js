@@ -1,10 +1,11 @@
-/* globals require, exports, Services */
+/* globals require, exports, Services, NetUtil */
 
 "use strict";
 
 const {before, after} = require("sdk/test/utils");
 const simplePrefs = require("sdk/simple-prefs");
 const {Loader} = require("sdk/test/loader");
+const {setTimeout} = require("sdk/timers");
 const loader = Loader(module);
 const httpd = loader.require("./lib/httpd");
 const ss = require("sdk/simple-storage");
@@ -21,6 +22,7 @@ const URL_FILTERS = [
 
 Cu.importGlobalProperties(["URL"]);
 Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/NetUtil.jsm");
 
 const gPort = 8089;
 let gPreviewProvider;
@@ -29,11 +31,11 @@ let gPrefEnabled = simplePrefs.prefs["previews.enabled"];
 
 exports.test_cache_invalidation = function*(assert) {
   let currentTime = Date.now();
-  let twoDaysAgo = currentTime - (2 * 24 * 60 * 60 * 1000);
-  ss.storage.embedlyData.item_1 = {accessTime: twoDaysAgo};
+  let fortyDaysAgo = currentTime - (40 * 24 * 60 * 60 * 1000);
+  ss.storage.embedlyData.item_1 = {accessTime: fortyDaysAgo};
   ss.storage.embedlyData.item_2 = {accessTime: currentTime};
   assert.equal(Object.keys(ss.storage.embedlyData).length, 2, "items set");
-  gPreviewProvider.cleanUpCache();
+  gPreviewProvider.cleanUpCacheMaybe(true);
   assert.equal(Object.keys(ss.storage.embedlyData).length, 1, "items cleaned up");
 };
 
@@ -45,9 +47,26 @@ exports.test_enabling = function*(assert) {
   assert.equal(Object.keys(ss.storage.embedlyData).length, 0, "empty object");
 };
 
+exports.test_access_update = function*(assert) {
+  let currentTime = Date.now();
+  let twoDaysAgo = currentTime - (2 * 24 * 60 * 60 * 1000);
+  ss.storage.embedlyData.item_1 = {accessTime: twoDaysAgo};
+  gPreviewProvider.getEnhancedLinks([{cacheKey: "item_1"}]);
+  assert.ok(ss.storage.embedlyData.item_1.accessTime > twoDaysAgo, "access time is updated");
+};
+
+exports.test_long_hibernation = function*(assert) {
+  let currentTime = Date.now();
+  let fortyDaysAgo = currentTime - (40 * 24 * 60 * 60 * 1000);
+  ss.storage.embedlyData.item_1 = {accessTime: fortyDaysAgo};
+  gPreviewProvider.getEnhancedLinks([{cacheKey: "item_1"}]);
+  assert.ok(ss.storage.embedlyData.item_1.accessTime >= currentTime, "access time is updated");
+};
+
 exports.test_periodic_cleanup = function*(assert) {
-  let oldTimeout = gPreviewProvider.options.cacheTimeout;
-  gPreviewProvider.options.cacheTimeout = 50;
+  let oldThreshold = gPreviewProvider.options.cacheCleanupPeriod;
+  gPreviewProvider.options.cacheCleanupPeriod = 30;
+
   let countingCleanupPromise = new Promise(resolve => {
     let notif = "activity-streams-preview-cache-cleanup";
     let count = 0;
@@ -62,30 +81,111 @@ exports.test_periodic_cleanup = function*(assert) {
     };
     Services.obs.addObserver(waitForNotif, notif);
   });
-  gPreviewProvider.startPeriodicCleanup();
-  let count = yield countingCleanupPromise;
-  assert.equal(count, 3, "cleanup called expected number of times");
-  gPreviewProvider.options.cacheTimeout = oldTimeout;
+
+  let countingRunsPromise = new Promise(resolve => {
+    let runCount = 0;
+    let periodicCleanups = () => {
+      setTimeout(() => {
+        gPreviewProvider.cleanUpCacheMaybe();
+        runCount++;
+        if (runCount >= 6) {
+          resolve(runCount);
+        } else {
+          periodicCleanups();
+        }
+      }, 20);
+    };
+    periodicCleanups();
+  });
+
+  let values = yield Promise.all([countingRunsPromise, countingCleanupPromise]);
+  assert.equal(JSON.stringify(values), JSON.stringify([6, 3]), "expected counts are obtained");
+  gPreviewProvider.options.cacheCleanupPeriod = oldThreshold;
+};
+
+exports.test_periodic_update = function*(assert) {
+  let oldTimeout = gPreviewProvider.options.cacheUpdateInterval;
+  gPreviewProvider.options.cacheUpdateInterval = 10;
+
+  // cycle enabled pref to reset timeouts
+  simplePrefs.prefs["previews.enabled"] = false;
+  simplePrefs.prefs["previews.enabled"] = true;
+
+  let countingUpdatePromise = new Promise(resolve => {
+    let notif = "activity-streams-preview-cache-update";
+    let count = 0;
+    let waitForNotif = (subject, topic, data) => {
+      if (topic === notif) {
+        count++;
+        if (count === 3) {
+          Services.obs.removeObserver(waitForNotif, notif);
+          resolve(count);
+        }
+      }
+    };
+    Services.obs.addObserver(waitForNotif, notif);
+  });
+  let count = yield countingUpdatePromise;
+  assert.equal(count, 3, "update called expected number of times");
+  gPreviewProvider.options.cacheUpdateInterval = oldTimeout;
+};
+
+exports.test_update_links = function*(assert) {
+  let currentTime = Date.now();
+  let fourDaysAgo = currentTime - (4 * 24 * 60 * 60 * 1000);
+  ss.storage.embedlyData.item_1 = {accessTime: fourDaysAgo, sanitizedURL: "http://example.com/1", cacheKey: "item_1"};
+  ss.storage.embedlyData.item_2 = {accessTime: fourDaysAgo, refreshTime: fourDaysAgo, sanitizedURL: "http://example.com/2", cacheKey: "item_2"};
+  ss.storage.embedlyData.item_3 = {accessTime: currentTime, refreshTime: currentTime, sanitizedURL: "http://example.com/3", cacheKey: "item_3"};
+
+  assert.ok(gPreviewProvider._embedlyEndpoint, "The embedly endpoint is set");
+  let srv = httpd.startServerAsync(gPort);
+
+  srv.registerPathHandler("/embedlyLinkData", function handle(request, response) {
+    let data = JSON.parse(
+        NetUtil.readInputStreamToString(
+          request.bodyInputStream,
+          request.bodyInputStream.available()
+        )
+    );
+    let urls = {};
+    for (let url of data.urls) {
+      urls[url] = {"embedlyMetaData": "some embedly metadata"};
+    }
+    response.setHeader("Content-Type", "application/json", false);
+    response.write(JSON.stringify({urls}));
+  });
+  yield gPreviewProvider.asyncUpdateLinks();
+
+  assert.equal(ss.storage.embedlyData.item_1.accessTime, fourDaysAgo, "link 1 access time is unchanged");
+  assert.ok(ss.storage.embedlyData.item_1.refreshTime, "link 1 refresh time is set");
+  assert.equal(ss.storage.embedlyData.item_2.accessTime, fourDaysAgo, "link 2 access time is unchanged");
+  assert.notEqual(ss.storage.embedlyData.item_2.refreshTime, fourDaysAgo, "link 2 refresh time is updated");
+  assert.equal(ss.storage.embedlyData.item_3.accessTime, currentTime, "link 3 access time is unchanged");
+  assert.equal(ss.storage.embedlyData.item_3.refreshTime, currentTime, "link 3 refresh time is unchanged");
+
+  yield new Promise(resolve => {
+    srv.stop(resolve);
+  });
 };
 
 exports.test_filter_urls = function*(assert) {
   const fakeData = {
     get validLinks() {
       return [
-        {"url": "http://foo.com/","title": "blah"},
-        {"url": "https://www.foo.com/","title": "blah"},
-        {"url": "hTTp://fOo.com/","title": "blah"},
+        {"url": "http://foo.com/", "title": "blah"},
+        {"url": "https://www.foo.com/", "title": "blah"},
+        {"url": "hTTp://fOo.com/", "title": "blah"},
         {"url": "http://localhost-foo.com", "title": "blah"}
       ];
     },
     get invalidLinks() {
       return [
-        {"url": "","title": "blah"},
-        {"url": "ftp://foo.com/","title": "blah"},
-        {"url": "garbage://foo.com/","title": "blah"},
-        {"url": "HTTP://localhost:8080/","title": "blah"},
-        {"url": "http://127.0.0.1","title": "blah"},
-        {"url": "http://0.0.0.0","title": "blah"},
+        {"url": "", "title": "blah"},
+        {"url": "ftp://foo.com/", "title": "blah"},
+        {"url": "garbage://foo.com/", "title": "blah"},
+        {"url": "HTTP://localhost:8080/", "title": "blah"},
+        {"url": "http://127.0.0.1", "title": "blah"},
+        {"url": "http://0.0.0.0", "title": "blah"},
         {"url": null, "title": "blah"}
       ];
     },
@@ -135,21 +235,21 @@ exports.test_sanitize_urls = function*(assert) {
 
 exports.test_dedupe_urls = function*(assert) {
   const fakeData = [
-    {"url": "http://foo.com/","title": "blah"},
-    {"url": "http://www.foo.com/","title": "blah"},
-    {"url": "https://foo.com/","title": "blah"},
-    {"url": "http://foo.com/bar/foobar","title": "blah"},
-    {"url": "http://foo.com/bar////foobar","title": "blah"},
-    {"url": "https://www.foo.com/?q=param","title": "blah"},
-    {"url": "hTTp://fOo.com/","title": "blah"},
+    {"url": "http://foo.com/", "title": "blah"},
+    {"url": "http://www.foo.com/", "title": "blah"},
+    {"url": "https://foo.com/", "title": "blah"},
+    {"url": "http://foo.com/bar/foobar", "title": "blah"},
+    {"url": "http://foo.com/bar////foobar", "title": "blah"},
+    {"url": "https://www.foo.com/?q=param", "title": "blah"},
+    {"url": "hTTp://fOo.com/", "title": "blah"},
     {"url": "http://localhost-foo.com", "title": "blah"}
   ];
 
   // dedupe a set of sanitized links while maintaining their original url
   let uniqueLinks = gPreviewProvider._uniqueLinks(fakeData);
   let expectedUrls = [
-    {"url": "http://foo.com/","title": "blah"},
-    {"url": "http://foo.com/bar/foobar","title": "blah"},
+    {"url": "http://foo.com/", "title": "blah"},
+    {"url": "http://foo.com/bar/foobar", "title": "blah"},
     {"url": "http://localhost-foo.com", "title": "blah"}
   ];
 
@@ -188,14 +288,14 @@ exports.test_mock_embedly_request = function*(assert) {
     response.write(JSON.stringify(fakeDataCached));
   });
 
-  yield gPreviewProvider.asyncSaveNewLinks(fakeData);
+  yield gPreviewProvider.asyncSaveLinks(fakeData);
 
   assert.deepEqual(ss.storage.embedlyData[fakeSite.cacheKey].embedlyMetaData, "some embedly metadata", "the cache saved the embedly data");
   assert.ok(ss.storage.embedlyData[fakeSite.cacheKey].accessTime, "the cached saved a time stamp");
 
-  let cachedLinks = gPreviewProvider.getCachedLinks(fakeData);
-  assert.equal(cachedLinks[0].lastVisitDate, fakeSite.lastVisitDate, "getCachedLinks should prioritize new data");
-  assert.equal(cachedLinks[0].bookmarkDateCreated, fakeSite.bookmarkDateCreated, "getCachedLinks should prioritize new data");
+  let cachedLinks = gPreviewProvider.getEnhancedLinks(fakeData);
+  assert.equal(cachedLinks[0].lastVisitDate, fakeSite.lastVisitDate, "getEnhancedLinks should prioritize new data");
+  assert.equal(cachedLinks[0].bookmarkDateCreated, fakeSite.bookmarkDateCreated, "getEnhancedLinks should prioritize new data");
   assert.ok(ss.storage.embedlyData[fakeSite.cacheKey], "the cached link is now retrieved next time");
 
   yield new Promise(resolve => {
@@ -203,13 +303,24 @@ exports.test_mock_embedly_request = function*(assert) {
   });
 };
 
-exports.test_get_cached_disabled = function*(assert) {
+exports.test_get_enhanced_disabled = function*(assert) {
   const fakeData = [
     {url: "http://foo.com/", lastVisitDate: 1459537019061}
   ];
   simplePrefs.prefs["previews.enabled"] = false;
-  let cachedLinks = gPreviewProvider.getCachedLinks(fakeData);
+  let cachedLinks = gPreviewProvider.getEnhancedLinks(fakeData);
   assert.deepEqual(cachedLinks, fakeData, "if disabled, should return links as is");
+};
+
+exports.test_get_enhanced_previews_only = function*(assert) {
+  ss.storage.embedlyData["example.com/"] = {sanitizedURL: "http://example.com/", cacheKey: "example.com/", url: "http://example.com/"};
+  let links;
+
+  links = gPreviewProvider.getEnhancedLinks([{cacheKey: "example.com/"}, {cacheKey: "foo.com"}]);
+  assert.equal(links.length, 2, "by default getEnhancedLinks returns links with and without previews");
+
+  links = gPreviewProvider.getEnhancedLinks([{cacheKey: "example.com/"}, {cacheKey: "foo.com"}], true);
+  assert.equal(links.length, 1, "when previewOnly is set, return only links with previews");
 };
 
 before(exports, function*() {
