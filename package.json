@@ -1,6 +1,6 @@
 {
   "name": "activity-streams",
-  "description": "A feed-based view on user history",
+  "description": "A rich visual history feed and a reimagined home page make it easier than ever to find exactly what you're looking for in Firefox.",
   "version": "1.0.13",
   "author": "Mozilla (https://mozilla.org/)",
   "bugs": {
@@ -106,16 +106,25 @@
       "value": true
     },
     {
+      "name": "query.blockedURLs",
+      "title": "Blocked URLs",
+      "type": "string",
+      "value": "[]",
+      "hidden": true
+    },
+    {
       "name": "telemetry.ping.endpoint",
       "title": "Telemetry server endpoint",
       "type": "string",
-      "value": "https://tiles.services.mozilla.com/v3/links/activity-stream"
+      "value": "https://tiles.services.mozilla.com/v3/links/activity-stream",
+      "hidden": true
     },
     {
       "name": "embedly.endpoint",
       "title": "Embedly Endpoint",
       "type": "string",
-      "value": "https://embedly-proxy.stage.mozaws.net/v2/extract"
+      "value": "https://embedly-proxy.stage.mozaws.net/v2/extract",
+      "hidden": true
     }
   ],
   "repository": "mozilla/activity-streams",
@@ -136,7 +145,7 @@
     "start:static": "npm run bundle:static -- -w",
     "start:webpack": "webpack -w",
     "start:css": "npm run bundle:css && npm run bundle:css -- -w",
-    "start:html": "npm run bundle:html -- --baseUrl http://localhost:1963/",
+    "start:html": "npm run bundle:html -- --baseUrl http://localhost:1963/ --csp off",
     "start:server": "live-server data/content --port=1963 --no-browser",
     "firefox": "jpm run --prefs ./dev-prefs.json",
     "test": "npm-run-all test:*",
