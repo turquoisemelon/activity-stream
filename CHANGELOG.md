@@ -1,3 +1,45 @@
+<a name="1.0.16"></a>
+## 1.0.16 (2016-05-10)
+
+* 1.0.15 changelog ([0ff3de0](https://github.com/mozilla/activity-stream/commit/0ff3de0))
+* 1.0.16 ([91c516a](https://github.com/mozilla/activity-stream/commit/91c516a))
+* fix (addon): #646 do not throw exception on invalid uri component ([edc3547](https://github.com/mozilla/activity-stream/commit/edc3547)), closes [#646](https://github.com/mozilla/activity-stream/issues/646)
+* fix(addon): send all links including those without embedly ([8d5fa28](https://github.com/mozilla/activity-stream/commit/8d5fa28))
+* fix(concurrency): guard against handlers called when ActivityStream object is gone ([1d78b8d](https://github.com/mozilla/activity-stream/commit/1d78b8d))
+* fix(travis): #650 skip cleanup for travis deploy ([61dda27](https://github.com/mozilla/activity-stream/commit/61dda27))
+* feat(content): add loading ui for >2s of loading ([54ea1f8](https://github.com/mozilla/activity-stream/commit/54ea1f8))
+* chore(meta): drop plural from activity stream in addon metadata ([eb4b6d4](https://github.com/mozilla/activity-stream/commit/eb4b6d4))
+* chore(previews): #565 use prod embedly proxy ([bdd89ba](https://github.com/mozilla/activity-stream/commit/bdd89ba))
+* chore(travis): Lock to 47.0 ([fd11f23](https://github.com/mozilla/activity-stream/commit/fd11f23))
+* chore(webpack): add json-loader to dependencies ([9937604](https://github.com/mozilla/activity-stream/commit/9937604))
+* style(content): #427 Fix buttons on New Tab Page ([ea981fd](https://github.com/mozilla/activity-stream/commit/ea981fd))
+* style(content): #610 Fade in main sections on init ([1755758](https://github.com/mozilla/activity-stream/commit/1755758))
+
+
+
+<a name="1.0.15"></a>
+## 1.0.15 (2016-05-05)
+
+* 1.0.14 changelog ([bb851a6](https://github.com/mozilla/activity-streams/commit/bb851a6))
+* 1.0.15 ([77a813c](https://github.com/mozilla/activity-streams/commit/77a813c))
+* feat (addon) #444 enhance sites with tippy top data ([44e58d5](https://github.com/mozilla/activity-streams/commit/44e58d5))
+* fix (addon) #579 hide simple prefs ([ecd4756](https://github.com/mozilla/activity-streams/commit/ecd4756)), closes [#579](https://github.com/mozilla/activity-streams/issues/579)
+* style(content) #586 align loading spinner ([2d8a269](https://github.com/mozilla/activity-streams/commit/2d8a269))
+* use rimraf and mkdirp instead of shell #125 ([692ca74](https://github.com/mozilla/activity-streams/commit/692ca74))
+* fix(addon): #608 Order bookmarks by date created instead of date modified. ([448b4a1](https://github.com/mozilla/activity-streams/commit/448b4a1))
+* fix(addon): #625 Renaming ping attributes for bookmarks and history counts. ([39d7c7a](https://github.com/mozilla/activity-streams/commit/39d7c7a))
+* fix(content): #572 pre-dedupe TopSites ([f61f9c0](https://github.com/mozilla/activity-streams/commit/f61f9c0))
+* fix(content): #620 Fix top site containers ([6f3440d](https://github.com/mozilla/activity-streams/commit/6f3440d))
+* feat(caching): #629 store cache data on disk to avoid cold boots ([65c6954](https://github.com/mozilla/activity-streams/commit/65c6954))
+* feat(caching): #630 replace data when ready as opposed to invalidating first ([b6cecfb](https://github.com/mozilla/activity-streams/commit/b6cecfb))
+* feat(content): #607 UI for real blocking ([404d983](https://github.com/mozilla/activity-streams/commit/404d983))
+* feat(perf): keep track of highlights links request times ([d81211d](https://github.com/mozilla/activity-streams/commit/d81211d))
+* feat(previews): do not wait on embedly call to return links ([244d29f](https://github.com/mozilla/activity-streams/commit/244d29f))
+* chore(icon): Update SVG icon in about:addons ([cde8b99](https://github.com/mozilla/activity-streams/commit/cde8b99))
+* chore(package): Add TestPilot link in package description ([03a0983](https://github.com/mozilla/activity-streams/commit/03a0983))
+
+
+
 <a name="1.0.14"></a>
 ## 1.0.14 (2016-04-29)
 
