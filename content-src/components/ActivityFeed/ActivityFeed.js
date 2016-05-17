@@ -183,12 +183,9 @@ const GroupedActivityFeed = React.createClass({
     const groupedSites = groupSitesByDate(sites);
     let globalCount = -1;
     return (<div className="grouped-activity-feed">
-      {sites.length > 0 && this.props.title &&
-        <h3 ref="title" className="section-title">{this.props.title}</h3>
-      }
       {Array.from(groupedSites.keys()).map((date, dateIndex) => {
         return (<div className="group" key={date}>
-          {this.props.showDateHeadings && dateIndex > 0 &&
+          {this.props.showDateHeadings &&
             <h3 className="section-title">{moment(date).startOf("day").calendar(null, CALENDAR_HEADINGS)}</h3>
           }
           {groupedSites.get(date).map((sites, outerIndex) => {
@@ -196,7 +193,7 @@ const GroupedActivityFeed = React.createClass({
               {sites.map((site, i) => {
                 globalCount++;
                 return (<ActivityFeedItem
-                    key={site[this.props.dateKey]}
+                    key={site.cacheKey || i}
                     onClick={this.onClickFactory(globalCount)}
                     onShare={this.onShareFactory(globalCount)}
                     showImage={getRandomFromTimestamp(0.2, site)}
@@ -217,7 +214,6 @@ const GroupedActivityFeed = React.createClass({
 GroupedActivityFeed.propTypes = {
   sites: React.PropTypes.array.isRequired,
   length: React.PropTypes.number,
-  title: React.PropTypes.string,
   dateKey: React.PropTypes.string,
   page: React.PropTypes.string,
   showDateHeadings: React.PropTypes.bool

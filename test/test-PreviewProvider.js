@@ -4,6 +4,7 @@
 
 const {before, after} = require("sdk/test/utils");
 const simplePrefs = require("sdk/simple-prefs");
+const self = require("sdk/self");
 const {Loader} = require("sdk/test/loader");
 const {setTimeout} = require("sdk/timers");
 const loader = Loader(module);
@@ -133,9 +134,9 @@ exports.test_periodic_update = function*(assert) {
 exports.test_update_links = function*(assert) {
   let currentTime = Date.now();
   let fourDaysAgo = currentTime - (4 * 24 * 60 * 60 * 1000);
-  ss.storage.embedlyData.item_1 = {accessTime: fourDaysAgo, sanitizedURL: "http://example.com/1", cacheKey: "item_1"};
-  ss.storage.embedlyData.item_2 = {accessTime: fourDaysAgo, refreshTime: fourDaysAgo, sanitizedURL: "http://example.com/2", cacheKey: "item_2"};
-  ss.storage.embedlyData.item_3 = {accessTime: currentTime, refreshTime: currentTime, sanitizedURL: "http://example.com/3", cacheKey: "item_3"};
+  ss.storage.embedlyData["example.com/1"] = {url: "http://example.com/1", accessTime: fourDaysAgo, sanitizedURL: "http://example.com/1", cacheKey: "example.com/1"};
+  ss.storage.embedlyData["example.com/2"] = {url: "http://example.com/2", accessTime: fourDaysAgo, refreshTime: fourDaysAgo, sanitizedURL: "http://example.com/2", cacheKey: "example.com/2"};
+  ss.storage.embedlyData["example.com/3"] = {url: "http://example.com/3", accessTime: currentTime, refreshTime: currentTime, sanitizedURL: "http://example.com/3", cacheKey: "example.com/3"};
 
   assert.ok(gPreviewProvider._embedlyEndpoint, "The embedly endpoint is set");
   let srv = httpd.startServerAsync(gPort);
@@ -147,6 +148,7 @@ exports.test_update_links = function*(assert) {
           request.bodyInputStream.available()
         )
     );
+    data.urls.forEach(link => assert.notEqual(link, null, "there are no null links"));
     let urls = {};
     for (let url of data.urls) {
       urls[url] = {"embedlyMetaData": "some embedly metadata"};
@@ -156,12 +158,12 @@ exports.test_update_links = function*(assert) {
   });
   yield gPreviewProvider.asyncUpdateLinks();
 
-  assert.equal(ss.storage.embedlyData.item_1.accessTime, fourDaysAgo, "link 1 access time is unchanged");
-  assert.ok(ss.storage.embedlyData.item_1.refreshTime, "link 1 refresh time is set");
-  assert.equal(ss.storage.embedlyData.item_2.accessTime, fourDaysAgo, "link 2 access time is unchanged");
-  assert.notEqual(ss.storage.embedlyData.item_2.refreshTime, fourDaysAgo, "link 2 refresh time is updated");
-  assert.equal(ss.storage.embedlyData.item_3.accessTime, currentTime, "link 3 access time is unchanged");
-  assert.equal(ss.storage.embedlyData.item_3.refreshTime, currentTime, "link 3 refresh time is unchanged");
+  assert.equal(ss.storage.embedlyData["example.com/1"].accessTime, fourDaysAgo, "link 1 access time is unchanged");
+  assert.ok(ss.storage.embedlyData["example.com/1"].refreshTime, "link 1 refresh time is set");
+  assert.equal(ss.storage.embedlyData["example.com/2"].accessTime, fourDaysAgo, "link 2 access time is unchanged");
+  assert.notEqual(ss.storage.embedlyData["example.com/2"].refreshTime, fourDaysAgo, "link 2 refresh time is updated");
+  assert.equal(ss.storage.embedlyData["example.com/3"].accessTime, currentTime, "link 3 access time is unchanged");
+  assert.equal(ss.storage.embedlyData["example.com/3"].refreshTime, currentTime, "link 3 refresh time is unchanged");
 
   yield new Promise(resolve => {
     srv.stop(resolve);
@@ -304,6 +306,49 @@ exports.test_dedupe_urls = function*(assert) {
   });
 };
 
+exports.test_throw_out_non_requested_responses = function*(assert) {
+  const fakeSite1 = {"url": "http://example1.com/", "sanitizedURL": "http://example1.com/", "cacheKey": "example1.com/"};
+  const fakeSite2 = {"url": "http://example2.com/", "sanitizedURL": "http://example2.com/", "cacheKey": "example2.com/"};
+  const fakeSite3 = {"url": "http://example3.com/", "sanitizedURL": "http://example3.com/", "cacheKey": "example3.com/"};
+  const fakeSite4 = {"url": "http://example4.com/", "sanitizedURL": "http://example4.com/", "cacheKey": "example4.com/"};
+  // send site 1, 2, 4
+  const fakeData = [fakeSite1, fakeSite2, fakeSite4];
+
+  // receive site 1, 2, 3
+  const fakeResponse = {"urls": {
+    "http://example1.com/": {
+      "embedlyMetaData": "some good embedly metadata for fake site 1"
+    },
+    "http://example2.com/": {
+      "embedlyMetaData": "some good embedly metadata for fake site 2"
+    },
+    "http://example3.com/": {
+      "embedlyMetaData": "oh no I didn't request this!"
+    }
+  }};
+
+  assert.ok(gPreviewProvider._embedlyEndpoint, "The embedly endpoint is set");
+  let srv = httpd.startServerAsync(gPort);
+
+  srv.registerPathHandler("/embedlyLinkData", function handle(request, response) {
+    response.setHeader("Content-Type", "application/json", false);
+    response.write(JSON.stringify(fakeResponse));
+  });
+
+  yield gPreviewProvider.asyncSaveLinks(fakeData);
+
+  // cache should contain example1.com and example2.com
+  assert.ok(ss.storage.embedlyData[fakeSite1.cacheKey].embedlyMetaData, "first site was saved as expected");
+  assert.ok(ss.storage.embedlyData[fakeSite2.cacheKey].embedlyMetaData, "second site was saved as expected");
+  // cache should not contain example3.com and example4.com
+  assert.throws(() => ss.storage.embedlyData[fakeSite3.cacheKey].embedlyMetaData, "third site was not found in the cache");
+  assert.throws(() => ss.storage.embedlyData[fakeSite4.cacheKey].embedlyMetaData, "fourth site was not found in the cache");
+
+  yield new Promise(resolve => {
+    srv.stop(resolve);
+  });
+},
+
 exports.test_mock_embedly_request = function*(assert) {
   const fakeSite = {
     "url": "http://example.com/",
@@ -323,10 +368,13 @@ exports.test_mock_embedly_request = function*(assert) {
     }
   }};
 
+  const embedlyVersionQuery = "addon_version=";
   assert.ok(gPreviewProvider._embedlyEndpoint, "The embedly endpoint is set");
-  let srv = httpd.startServerAsync(gPort);
 
+  let srv = httpd.startServerAsync(gPort);
   srv.registerPathHandler("/embedlyLinkData", function handle(request, response) {
+    // first, check that the version included in the query string
+    assert.deepEqual(`${request.queryString}`, `${embedlyVersionQuery}${self.version}`, "we're hitting the correct endpoint");
     response.setHeader("Content-Type", "application/json", false);
     response.write(JSON.stringify(fakeDataCached));
   });
