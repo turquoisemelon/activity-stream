@@ -74,6 +74,7 @@ const SpotlightItem = React.createClass({
         visible={this.state.showContextMenu}
         onUpdate={val => this.setState({showContextMenu: val})}
         url={site.url}
+        bookmarkGuid={site.bookmarkGuid}
         page={this.props.page}
         index={this.props.index}
         source={this.props.source}
@@ -122,7 +123,7 @@ const Spotlight = React.createClass({
       <ul className="spotlight-list">
         {sites.map((site, i) => <SpotlightItem
           index={i}
-          key={site.cacheKey || i}
+          key={site.guid || site.cacheKey || i}
           page={this.props.page}
           source="FEATURED"
           onClick={this.onClickFactory(i)}

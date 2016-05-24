@@ -72,6 +72,37 @@ describe("setRowsOrError", () => {
     assert.deepEqual(state.rows, prevRows);
   });
 
+  it("should set canLoadMore to true by default", () => {
+    const action = {
+      type: RESPONSE_TYPE,
+      data: [{url: "a"}, {url: "b"}]
+    };
+    const state = reducer(undefined, action);
+    assert.isTrue(state.canLoadMore);
+  });
+
+  it("should set canLoadMore to false when data is missing", () => {
+    const state = reducer(undefined, {type: RESPONSE_TYPE});
+    assert.isFalse(state.canLoadMore);
+  });
+
+  it("should set canLoadMore to false when there are 0 items", () => {
+    const state = reducer(undefined, {type: RESPONSE_TYPE, data: []});
+    assert.isFalse(state.canLoadMore);
+  });
+
+  it("should set canLoadMore to false when the results are less than the querySize", () => {
+    reducer = setRowsOrError(REQUEST_TYPE, RESPONSE_TYPE, 3);
+    const state = reducer(undefined, {type: RESPONSE_TYPE, data: [{url: "a"}, {url: "b"}]});
+    assert.isFalse(state.canLoadMore);
+  });
+
+  it("should set canLoadMore to true when the results are equal to the querySize", () => {
+    reducer = setRowsOrError(REQUEST_TYPE, RESPONSE_TYPE, 3);
+    const state = reducer(undefined, {type: RESPONSE_TYPE, data: [{url: "a"}, {url: "b"}, {url: "c"}]});
+    assert.isTrue(state.canLoadMore);
+  });
+
   ((event) => {
     it(`should remove a row removed via ${event}`, () => {
       const action = {type: event, data: "http://foo.com"};
@@ -80,5 +111,14 @@ describe("setRowsOrError", () => {
       assert.deepEqual(state.rows, [{url: "http://bar.com"}]);
     });
   })("NOTIFY_HISTORY_DELETE", "NOTIFY_BLOCK_URL");
+
+  ((event) => {
+    it(`should remove a row removed via ${event}`, () => {
+      const action = {type: event, data: "boorkmarkFOO"};
+      const prevRows = [{bookmarkGuid: "boorkmarkFOO"}, {bookmarkGuid: "boorkmarkBAR"}];
+      const state = reducer(Object.assign({}, setRowsOrError.DEFAULTS, {rows: prevRows}), action);
+      assert.deepEqual(state.rows, [{bookmarkGuid: "boorkmarkBAR"}]);
+    });
+  })("NOTIFY_BOOKMARK_DELETE", "NOTIFY_BLOCK_URL");
 
 });

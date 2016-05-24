@@ -86,6 +86,7 @@ const ActivityFeedItem = React.createClass({
         visible={this.state.showContextMenu}
         onUpdate={val => this.setState({showContextMenu: val})}
         url={site.url}
+        bookmarkGuid={site.bookmarkGuid}
         page={this.props.page}
         index={this.props.index}
         source={this.props.source}
@@ -193,7 +194,7 @@ const GroupedActivityFeed = React.createClass({
               {sites.map((site, i) => {
                 globalCount++;
                 return (<ActivityFeedItem
-                    key={i}
+                    key={site.guid || i}
                     onClick={this.onClickFactory(globalCount)}
                     onShare={this.onShareFactory(globalCount)}
                     showImage={getRandomFromTimestamp(0.2, site)}

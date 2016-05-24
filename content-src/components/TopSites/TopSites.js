@@ -41,7 +41,7 @@ const TopSites = React.createClass({
       <div className="tiles-wrapper">
         {sites.map((site, i) => {
           const isActive = this.state.showContextMenu && this.state.activeTile === i;
-          return (<div className="tile-outer" key={site.cacheKey || i}>
+          return (<div className="tile-outer" key={site.guid || site.cacheKey || i}>
             <a onClick={() => this.onClick(i)} className={classNames("tile", {active: isActive})} href={site.url}>
               <SiteIcon className="tile-img-container" site={site} faviconSize={32} showTitle />
               <div hidden={site.type === FIRST_RUN_TYPE} className="tile-close-icon" onClick={(ev) => {
@@ -55,6 +55,7 @@ const TopSites = React.createClass({
               visible={isActive}
               onUpdate={val => this.setState({showContextMenu: val})}
               url={site.url}
+              bookmarkGuid={site.bookmarkGuid}
               page={this.props.page}
               index={i}
               source="TOP_SITES"
