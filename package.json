@@ -1,7 +1,7 @@
 {
   "name": "activity-streams",
   "description": "A rich visual history feed and a reimagined home page make it easier than ever to find exactly what you're looking for in Firefox.\n\nLearn more about this Test Pilot experiment at https://testpilot.firefox.com/.",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "author": "Mozilla (https://mozilla.org/)",
   "bugs": {
     "url": "https://github.com/mozilla/activity-stream/issues"
@@ -10,6 +10,7 @@
     "classnames": "2.2.3",
     "fancy-dedupe": "0.1.0",
     "history": "1.17.0",
+    "lodash.debounce": "4.0.6",
     "moment": "2.11.2",
     "react": "0.14.8",
     "react-dom": "0.14.8",
@@ -20,6 +21,7 @@
     "redux-logger": "2.4.0",
     "redux-thunk": "1.0.3",
     "reselect": "2.0.3",
+    "seedrandom": "2.4.2",
     "url-parse": "1.0.5"
   },
   "devDependencies": {
@@ -140,6 +142,7 @@
     "prebundle": "npm run clean && npm run copyTestImages && npm run copyTopSitesJson",
     "bundle:static": "cpx \"content-src/static/**/*\" data/content",
     "bundle:webpack": "NODE_ENV=production webpack",
+    "bundle:webpackAddon": "webpack --config webpack.addon.config.js",
     "bundle:css": "node-sass content-src/main.scss -o data/content",
     "bundle:html": "node ./bin/generate-html.js > data/content/activity-streams.html",
     "postbundle": "du -hs ./data/content/*",
@@ -147,15 +150,16 @@
     "prestart": "npm run clean && npm run copyTestImages && npm run copyTopSitesJson",
     "start:static": "npm run bundle:static -- -w",
     "start:webpack": "webpack -w",
+    "start:webpackAddon": "npm run bundle:webpackAddon -- -w",
     "start:css": "npm run bundle:css && npm run bundle:css -- -w",
     "start:html": "npm run bundle:html -- --baseUrl http://localhost:1963/ --csp off",
     "start:server": "live-server data/content --port=1963 --no-browser",
-    "firefox": "jpm run --prefs ./dev-prefs.json",
+    "firefox": "npm run bundle:webpackAddon && jpm run --prefs ./dev-prefs.json",
     "test": "npm-run-all test:*",
     "pretest": "npm run bundle && npm run copyTestImages && npm run copyTopSitesJson",
     "test:lint": "eslint . && jscs . && sass-lint -v -q",
     "test:checkbinary": "echo \"JPM_FIREFOX_BINARY: ${JPM_FIREFOX_BINARY}\"",
-    "test:jpm": "jpm test -b ${JPM_FIREFOX_BINARY:-\"firefox\"} --prefs ./test-prefs.json",
+    "test:jpm": "jpm test -b ${JPM_FIREFOX_BINARY:-\"firefox\"} --prefs ./test-prefs.json -v",
     "test:karma": "NODE_ENV=test karma start",
     "posttest": "cat logs/reports/coverage/text-summary.txt",
     "tdd": "npm run test:karma -- --no-single-run --browsers Chrome",

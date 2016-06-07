@@ -13,7 +13,7 @@ Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/ClientID.jsm");
 
 const EXPECTED_KEYS = ["url", "tab_id", "session_duration", "client_id", "unload_reason", "addon_version",
-                       "page", "load_reason", "locale", "total_history_size", "total_bookmarks", "action"];
+                       "page", "load_reason", "locale", "total_history_size", "total_bookmarks", "action", "session_id"];
 
 let ACTIVITY_STREAMS_URL;
 let app;
@@ -175,6 +175,57 @@ exports.test_TabTracker_unfocus_unloaded_tab = function*(assert) {
 
   let loadReasons = ["none", "newtab", "focus"];
   let unloadReasons = ["unfocus", "close", "close"];
+  checkLoadUnloadReasons(assert, pingData, loadReasons, unloadReasons);
+};
+
+exports.test_TabTracker_back_button_load = function*(assert) {
+  let openTab;
+  let numLoads = 0;
+  let pingData = [];
+
+  let pingsSentPromise = createPingSentPromise(pingData, 2);
+
+  let tabOpenedPromise = new Promise(resolve => {
+    let onOpen = function(tab) {
+      openTab = tab;
+      numLoads++;
+      if (numLoads === 1) {
+        // Wait one event loop tick to ensure the event handlers in TabTracker
+        // run first before we reload.
+        setTimeout(() => {
+          openTab.reload();
+        }, 0);
+      } else {
+        // Note: Since there is no way to trigger the "back" button for the purpose
+        // of the test, here we are mimic it by ending a session due to refresh
+        // then clearing the data before getting to the 'pageshow' event in
+        // TabTracker.
+        app._tabTracker._clearTabData();
+        tabs.removeListener("pageshow", onOpen);
+        resolve();
+      }
+    };
+    tabs.on("pageshow", onOpen);
+  });
+
+  assert.deepEqual(app.tabData, {}, "tabData starts out empty");
+
+  tabs.open(ACTIVITY_STREAMS_URL);
+
+  yield tabOpenedPromise;
+
+  // Close both tabs.
+  let tabClosedPromise = new Promise(resolve => {
+    openTab.close(() => {
+      resolve();
+    });
+  });
+
+  yield tabClosedPromise;
+  yield pingsSentPromise;
+
+  let loadReasons = ["newtab", "back_button"];
+  let unloadReasons = ["refresh", "close"];
   checkLoadUnloadReasons(assert, pingData, loadReasons, unloadReasons);
 };
 
@@ -345,27 +396,44 @@ exports.test_TabTracker_action_pings = function*(assert) {
 
   let eventData = {
     msg: {
+      type: "NOTIFY_USER_EVENT",
       data: {
         source: "topsites",
         action_position: 3,
-        event: "click"
+        event: "CLICK"
       }
     }
   };
-  app._handleUserEvent("NOTIFY_USER_EVENT", eventData);
+  app._handleUserEvent(eventData);
 
   let pingData = yield userEventPromise;
   let additionalKeys = ["client_id", "addon_version", "locale", "action", "tab_id", "page"];
   for (let key of additionalKeys) {
     assert.ok(pingData[key], `The ping has the additional key ${key}`);
   }
-  assert.deepEqual(eventData.msg.data, pingData, "We receive the expected ping data.");
+  assert.deepEqual(eventData.msg.data.source, pingData.source, "the ping has the correct source");
+  assert.deepEqual(eventData.msg.data.event, pingData.event, "the ping has the correct event");
+  assert.deepEqual(eventData.msg.data.action_position, pingData.action_position, "the ping has the correct action_position");
 };
 
 exports.test_TabTracker_unload_reason_with_user_action = function*(assert) {
   let events = ["CLICK", "SEARCH"];
   for (let event of events) {
+    let openTab;
+    let sessionPingData = [];
+    let pingsSentPromise = createPingSentPromise(sessionPingData, 1);
+    let tabOpenedPromise = new Promise(resolve => {
+      let onOpen = function(tab) {
+        openTab = tab;
+        tabs.removeListener("pageshow", onOpen);
+        resolve();
+      };
+      tabs.on("pageshow", onOpen);
+    });
+
     tabs.open(ACTIVITY_STREAMS_URL);
+    yield tabOpenedPromise;
+
     let userEventPromise = new Promise(resolve => {
       function observe(subject, topic, data) {
         if (topic === "user-action-event") {
@@ -378,6 +446,7 @@ exports.test_TabTracker_unload_reason_with_user_action = function*(assert) {
 
     let eventData = {
       msg: {
+        type: "NOTIFY_USER_EVENT",
         data: {
           source: "topsites",
           action_position: 3,
@@ -385,18 +454,61 @@ exports.test_TabTracker_unload_reason_with_user_action = function*(assert) {
         }
       }
     };
-    app._handleUserEvent("NOTIFY_USER_EVENT", eventData);
+    app._handleUserEvent(eventData);
 
-    let pingData = yield userEventPromise;
+    let eventPingData = yield userEventPromise;
     let additionalKeys = ["client_id", "addon_version", "locale", "action", "tab_id", "page"];
     for (let key of additionalKeys) {
-      assert.ok(pingData[key], `The ping has the additional key ${key}`);
+      assert.ok(eventPingData[key], `The ping has the additional key ${key}`);
     }
-    assert.deepEqual(eventData.msg.data, pingData, "We receive the expected ping data.");
+    assert.deepEqual(eventData.msg.data, eventPingData, "We receive the expected ping data.");
 
-    pingData = yield waitForPageShowAndSessionComplete();
-    checkLoadUnloadReasons(assert, [pingData], ["newtab"], [event.toLowerCase()], false);
+    let tabClosedPromise = new Promise(resolve => {
+      openTab.close(() => {
+        resolve();
+      });
+    });
+
+    yield tabClosedPromise;
+    yield pingsSentPromise;
+
+    checkLoadUnloadReasons(assert, sessionPingData, ["newtab"], [event.toLowerCase()], false);
   }
+};
+
+exports.test_TabTracker_performance_action_pings = function*(assert) {
+  let performanceEventPromise = new Promise(resolve => {
+    function observe(subject, topic, data) {
+      if (topic === "performance-event") {
+        Services.obs.removeObserver(observe, "performance-event");
+        resolve(JSON.parse(data));
+      }
+    }
+    Services.obs.addObserver(observe, "performance-event");
+  });
+
+  let eventData1 = {
+    msg: {
+      data: {
+        source: "TOP_FRECENT_SITES_REQUEST",
+        event_id: "{c4f7e4a0-947b-7343-8a56-934c724492cc}",
+        event: "previewCacheHit",
+        value: 1
+      }
+    }
+  };
+  const event1 = app._tabTracker.generateEvent({source: "TOP_FRECENT_SITES_REQUEST"});
+  app._tabTracker.handlePerformanceEvent(event1, "previewCacheHit", 1);
+
+  let pingData = yield performanceEventPromise;
+  let additionalKeys = ["client_id", "addon_version", "locale", "action", "tab_id", "page"];
+  for (let key of additionalKeys) {
+    assert.ok(pingData[key], `The ping has the additional key ${key}`);
+  }
+  assert.ok(/{[0-9a-f\-]+}/.test(eventData1.msg.data.event_id), "ping has a UUID as an event ID");
+  assert.deepEqual(eventData1.msg.data.source, pingData.source, "the ping has the correct source");
+  assert.deepEqual(eventData1.msg.data.event, pingData.event, "the ping has the correct event");
+  assert.deepEqual(eventData1.msg.data.value, pingData.value, "the ping has the correct value");
 };
 
 exports.test_TabTracker_handleRouteChange_FirstLoad = function(assert) {

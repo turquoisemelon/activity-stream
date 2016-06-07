@@ -13,6 +13,8 @@ const am = new ActionManager([
   "RECENT_LINKS_RESPONSE",
   "HIGHLIGHTS_LINKS_REQUEST",
   "HIGHLIGHTS_LINKS_RESPONSE",
+  "EXPERIMENTS_REQUEST",
+  "EXPERIMENTS_RESPONSE",
   "NOTIFY_BLOCK_URL",
   "NOTIFY_UNBLOCK_URL",
   "NOTIFY_UNBLOCK_ALL",
@@ -40,7 +42,7 @@ am.ACTIONS_WITH_SITES = new Set([
 function Notify(type, data) {
   const action = {
     type,
-    meta: {broadcast: "content-to-addon"}
+    meta: {broadcast: eventConstants.CONTENT_TO_ADDON}
   };
   if (data) {
     action.data = data;
@@ -62,7 +64,7 @@ function Response(type, data, options = {}) {
 function RequestExpect(type, expect, options = {}) {
   const action = {
     type,
-    meta: {broadcast: "content-to-addon", expect}
+    meta: {broadcast: eventConstants.CONTENT_TO_ADDON, expect}
   };
   if (options.timeout) {
     action.meta.timeout = options.timeout;
@@ -87,7 +89,8 @@ function RequestBookmarks(options) {
 function RequestMoreBookmarks(beforeDate) {
   return RequestBookmarks({
     data: {beforeDate},
-    append: true
+    append: true,
+    skipPreviewRequest: true
   });
 }
 
@@ -98,7 +101,8 @@ function RequestRecentLinks(options) {
 function RequestMoreRecentLinks(beforeDate) {
   return RequestRecentLinks({
     data: {beforeDate},
-    append: true
+    append: true,
+    skipPreviewRequest: true
   });
 }
 
@@ -108,6 +112,10 @@ function RequestHighlightsLinks() {
 
 function RequestSearchState() {
   return RequestExpect("SEARCH_STATE_REQUEST", "SEARCH_STATE_RESPONSE");
+}
+
+function RequestExperiments() {
+  return RequestExpect("EXPERIMENTS_REQUEST", "EXPERIMENTS_RESPONSE");
 }
 
 function NotifyBookmarkDelete(data) {
@@ -170,6 +178,7 @@ am.defineActions({
   RequestMoreRecentLinks,
   RequestHighlightsLinks,
   RequestSearchState,
+  RequestExperiments,
   NotifyBlockURL,
   NotifyUnblockURL,
   NotifyUnblockAll,
