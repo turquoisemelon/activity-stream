@@ -21,6 +21,7 @@
 }
 
 .feed-item {
+  @include link-menu-button;
   display: flex;
   align-items: center;
   position: relative;
@@ -41,7 +42,7 @@
   &:first-child {
     &::before {
       margin-top: -($feed-circle-size / 2);
-      top: 50%;
+      top: 32px;
     }
   }
 
@@ -72,7 +73,7 @@
     height: $feed-circle-size;
     left: $feed-gutter-h + 3;
     position: absolute;
-    top: 50%;
+    top: 28px;
     width: $feed-circle-size;
     margin-top: -($feed-circle-size / 2);
   }
@@ -132,7 +133,7 @@
     }
   }
 
-  &.fixed,
+  &.active,
   &:hover {
     background: $feed-hover-color;
     border: 1px solid $faintest-black;
@@ -194,6 +195,10 @@
       text-overflow: ellipsis;
       white-space: nowrap;
       color: $link-blue;
+
+      &::after {
+        content: attr(data-feed-url);
+      }
     }
   }
 
@@ -201,5 +206,11 @@
     color: $feed-date-font-color;
     flex-shrink: 0;
     text-align: right;
+  }
+
+  .last-visit {
+    &::after {
+      content: attr(data-last-visit);
+    }
   }
 }
