@@ -27,40 +27,49 @@ const LinkMenu = React.createClass({
     }
   },
   getOptions() {
-    const {site, allowBlock, Experiments, dispatch} = this.props;
+    const {site, allowBlock, Experiments, dispatch, page} = this.props;
     const isNotDefault = site.type !== FIRST_RUN_TYPE;
+
+    let deleteOptions;
 
     // Don't add delete options for default links
     // that show up if your history is empty
-    const deleteOptions = isNotDefault ? [
-      {type: "separator"},
-      allowBlock && {
-        ref: "dismiss",
-        label: "Dismiss",
-        userEvent: "BLOCK",
-        onClick: () => dispatch(actions.NotifyBlockURL(site.url))
-      },
-      {
-        ref: "delete",
-        label: "Delete from History",
-        userEvent: "DELETE",
-        onClick: () => dispatch(actions.NotifyHistoryDelete(site.url))
-      }
-    ] : [];
+    if (isNotDefault && page !== "TIMELINE_BOOKMARKS") {
+      deleteOptions = [
+        allowBlock && {
+          ref: "dismiss",
+          label: "Dismiss",
+          icon: "dismiss",
+          userEvent: "BLOCK",
+          onClick: () => dispatch(actions.NotifyBlockURL(site.url))
+        },
+        {
+          ref: "delete",
+          label: "Delete from History",
+          icon: "delete",
+          userEvent: "DELETE",
+          onClick: () => dispatch(actions.NotifyHistoryDelete(site.url))
+        }
+      ];
 
-    if (Experiments.data.reverseMenuOptions) {
-      deleteOptions.reverse();
+      if (Experiments.data.reverseMenuOptions) {
+        deleteOptions.reverse();
+      }
+
+      deleteOptions.unshift({type: "separator"});
     }
 
     return [
       (site.bookmarkGuid ? {
         ref: "removeBookmark",
         label: "Remove Bookmark",
+        icon: "bookmark-remove",
         userEvent: "BOOKMARK_DELETE",
         onClick: () => dispatch(actions.NotifyBookmarkDelete(site.bookmarkGuid))
       } : {
         ref: "addBookmark",
         label: "Bookmark",
+        icon: "bookmark",
         userEvent: "BOOKMARK_ADD",
         onClick: () => dispatch(actions.NotifyBookmarkAdd(site.url))
       }),
@@ -68,12 +77,14 @@ const LinkMenu = React.createClass({
       {
         ref: "openWindow",
         label: "Open in a New Window",
+        icon: "new-window",
         userEvent: "OPEN_NEW_WINDOW",
         onClick: () => dispatch(actions.NotifyOpenWindow({url: site.url}))
       },
       {
         ref: "openPrivate",
         label: "Open in a Private Window",
+        icon: "new-window-private",
         userEvent: "OPEN_PRIVATE_WINDOW",
         onClick: () => dispatch(actions.NotifyOpenWindow({url: site.url, isPrivate: true}))
       }]

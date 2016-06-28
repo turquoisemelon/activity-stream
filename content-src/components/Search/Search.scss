@@ -1,4 +1,5 @@
 .search-wrapper {
+  cursor: default;
   display: flex;
   position: relative;
   margin: $search-margin-top 0 $search-margin-bottom;
@@ -16,6 +17,7 @@
     border: 1px solid $search-input-border-color;
     font-size: 12px;
     box-shadow: 0 5px 10px $faintest-black;
+    overflow: hidden;
 
     .search-title {
       color: $search-text;
@@ -23,6 +25,11 @@
       background-color: $search-section-background;
       display: flex;
       align-items: center;
+      word-break: break-all;
+
+      p {
+        margin: 0;
+      }
 
       #current-engine-icon {
         margin-right: 8px;
@@ -39,15 +46,8 @@
         @include list-items;
 
         li a {
-          color: $black;
-          display: block;
+          @include list-link;
           padding: 4px 36px;
-
-          &:hover,
-          &.active {
-            background: $search-blue;
-            color: $bg-color;
-          }
         }
       }
     }
@@ -59,15 +59,8 @@
         @include list-items;
 
         li a {
-          color: $black;
-          display: block;
+          @include list-link;
           padding: 4px 10px;
-
-          &:hover,
-          &.active {
-            background: $search-blue;
-            color: $bg-color;
-          }
 
           &:hover > #historyIcon,
           &.active > #historyIcon {
