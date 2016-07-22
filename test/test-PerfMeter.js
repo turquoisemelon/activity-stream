@@ -5,8 +5,8 @@ const simplePrefs = require("sdk/simple-prefs");
 
 const {before, after} = require("sdk/test/utils");
 const tabs = require("sdk/tabs");
-const {ActivityStreams} = require("lib/ActivityStreams");
 const {PerfMeter} = require("lib/PerfMeter");
+const {getTestActivityStream} = require("./lib/utils");
 const {Cu} = require("chrome");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
@@ -309,7 +309,7 @@ exports.test_PerfMeter_tab_restore = function*(assert) {
 
 before(exports, function() {
   simplePrefs.prefs["performance.log"] = true;
-  app = new ActivityStreams();
+  app = getTestActivityStream();
 });
 
 after(exports, function() {

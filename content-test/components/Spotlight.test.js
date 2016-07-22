@@ -32,17 +32,37 @@ describe("Spotlight", function() {
   });
 
   describe("actions", () => {
-    it("should fire a click event an item is clicked", done => {
+    it("should fire a click event an item is clicked without a url or recommender type if it is not a recommendation", done => {
       function dispatch(a) {
         if (a.type === "NOTIFY_USER_EVENT") {
           assert.equal(a.data.event, "CLICK");
           assert.equal(a.data.page, "NEW_TAB");
           assert.equal(a.data.source, "FEATURED");
           assert.equal(a.data.action_position, 0);
+          assert.equal(a.data.url, null);
+          assert.equal(a.data.recommender_type, null);
           done();
         }
       }
       instance = renderWithProvider(<Spotlight page={"NEW_TAB"} dispatch={dispatch} sites={fakeSpotlightItems} />);
+      TestUtils.Simulate.click(TestUtils.scryRenderedComponentsWithType(instance, SpotlightItem)[0].refs.link);
+    });
+    it("should fire a click event an item is clicked with url and recommender type when site is a recommendation", done => {
+      function dispatch(a) {
+        if (a.type === "NOTIFY_USER_EVENT") {
+          assert.equal(a.data.event, "CLICK");
+          assert.equal(a.data.page, "NEW_TAB");
+          assert.equal(a.data.source, "FEATURED");
+          assert.equal(a.data.action_position, 0);
+          assert.equal(a.data.url, fakeRecommendation.url);
+          assert.equal(a.data.recommender_type, fakeRecommendation.recommender_type);
+          done();
+        }
+      }
+      let fakeSitesWithRecommendation = fakeSpotlightItems;
+      let fakeRecommendation =  {url: "http://example.com", recommender_type: "pocket-trending", recommended: true};
+      fakeSitesWithRecommendation[0] = Object.assign({}, fakeSitesWithRecommendation[0], fakeRecommendation);
+      instance = renderWithProvider(<Spotlight page={"NEW_TAB"} dispatch={dispatch} sites={fakeSitesWithRecommendation} />);
       TestUtils.Simulate.click(TestUtils.scryRenderedComponentsWithType(instance, SpotlightItem)[0].refs.link);
     });
   });
@@ -101,6 +121,35 @@ describe("SpotlightItem", function() {
       });
       instance = renderWithProvider(<SpotlightItem {...props} />);
       assert.equal(instance.refs.contextMessage.textContent, "Visited recently");
+    });
+    describe("recommendations", () => {
+      it("should say 'Trending' if it is a recommendation and have a timestamp", () => {
+        const props = Object.assign({}, fakeSite, {
+          recommended: true,
+          lastVisitDate: null,
+          timestamp: 1456426160465
+        });
+        instance = renderWithProvider(<SpotlightItem {...props} />);
+        assert.equal(instance.refs.contextMessage.textContent, "Trending");
+        assert.equal(instance.refs.contextMessage.dataset.timestamp, moment(1456426160465).fromNow());
+      });
+      it("if the recommendation's timestamp is 0 don't show a timestamp", () => {
+        const props = Object.assign({}, fakeSite, {
+          timestamp: 0
+        });
+        instance = renderWithProvider(<SpotlightItem {...props} />);
+        assert.equal(instance.refs.contextMessage.dataset.timestamp, "");
+      });
+      it("should render the tooltip when hovering over a recommendation's context_message", () => {
+        const props = Object.assign({}, fakeSite, {
+          recommended: true,
+          lastVisitDate: null
+        });
+        instance = renderWithProvider(<SpotlightItem {...props} />);
+        assert.isTrue(instance.refs.spotlightTooltip.hidden);
+        TestUtils.Simulate.mouseOver(instance.refs.spotlightContext);
+        assert.isFalse(instance.refs.spotlightTooltip.hidden);
+      });
     });
     it("should show link menu when link button is pressed", () => {
       const button = ReactDOM.findDOMNode(TestUtils.findRenderedComponentWithType(instance, LinkMenuButton));

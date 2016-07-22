@@ -2,9 +2,8 @@
 
 const test = require("sdk/test");
 const windows = require("sdk/windows").browserWindows;
-const {ActivityStreams} = require("lib/ActivityStreams");
 const httpd = require("./lib/httpd");
-const {doGetFile} = require("./lib/utils");
+const {doGetFile, getTestActivityStream} = require("./lib/utils");
 
 const PORT = 8199;
 
@@ -12,7 +11,7 @@ exports["test activity stream doesn't load in private windows"] = function*(asse
   let path = "/dummy-activitystreams.html";
   let url = `http://localhost:${PORT}${path}`;
   let srv = httpd.startServerAsync(PORT, null, doGetFile("test/resources"));
-  let app = new ActivityStreams({pageURL: url});
+  let app = getTestActivityStream({pageURL: url});
 
   // Open a private browsing window to test with.
   let window = yield new Promise(resolve => windows.open({

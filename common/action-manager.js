@@ -5,11 +5,12 @@ const eventConstants = require("./event-constants");
 const am = new ActionManager([
   "TOP_FRECENT_SITES_REQUEST",
   "TOP_FRECENT_SITES_RESPONSE",
-  "RECEIVE_PLACES_CHANGES",
   "RECEIVE_CURRENT_ENGINE",
   "RECENT_BOOKMARKS_REQUEST",
   "RECENT_BOOKMARKS_RESPONSE",
-  "RECEIVE_BOOKMARKS_CHANGES",
+  "RECEIVE_BOOKMARK_ADDED",
+  "RECEIVE_BOOKMARK_REMOVED",
+  "RECEIVE_PLACES_CHANGES",
   "RECENT_LINKS_REQUEST",
   "RECENT_LINKS_RESPONSE",
   "HIGHLIGHTS_LINKS_REQUEST",
@@ -38,7 +39,12 @@ const am = new ActionManager([
   "NOTIFY_PERFORMANCE",
   "NOTIFY_USER_EVENT",
   "NOTIFY_OPEN_WINDOW",
-  "NOTIFY_UPDATE_SEARCH_STRING"
+  "NOTIFY_UPDATE_SEARCH_STRING",
+  "NOTIFY_BLOCK_RECOMMENDATION",
+  "NOTIFY_TOGGLE_RECOMMENDATIONS",
+  "RECEIVE_RECOMMENDATION_TOGGLE",
+  "PREFS_REQUEST",
+  "PREFS_RESPONSE"
 ]);
 
 // This is a a set of actions that have sites in them,
@@ -86,6 +92,9 @@ function RequestExpect(type, expect, options = {}) {
   if (options.append) {
     action.meta.append = true;
   }
+  if (options.meta) {
+    action.meta = Object.assign({}, options.meta, action.meta);
+  }
   return action;
 }
 
@@ -101,7 +110,7 @@ function RequestMoreBookmarks(beforeDate) {
   return RequestBookmarks({
     data: {beforeDate},
     append: true,
-    skipPreviewRequest: true
+    meta: {skipPreviewRequest: true}
   });
 }
 
@@ -113,12 +122,16 @@ function RequestMoreRecentLinks(beforeDate) {
   return RequestRecentLinks({
     data: {beforeDate},
     append: true,
-    skipPreviewRequest: true
+    meta: {skipPreviewRequest: true}
   });
 }
 
 function RequestHighlightsLinks() {
   return RequestExpect("HIGHLIGHTS_LINKS_REQUEST", "HIGHLIGHTS_LINKS_RESPONSE");
+}
+
+function RequestInitialPrefs() {
+  return RequestExpect("PREFS_REQUEST", "PREFS_RESPONSE");
 }
 
 function RequestSearchState() {
@@ -181,6 +194,14 @@ function NotifyUnblockAll() {
   return Notify("NOTIFY_UNBLOCK_ALL");
 }
 
+function NotifyBlockRecommendation(url) {
+  return Notify("NOTIFY_BLOCK_RECOMMENDATION", url);
+}
+
+function NotifyToggleRecommendations() {
+  return Notify("NOTIFY_TOGGLE_RECOMMENDATIONS");
+}
+
 function NotifyPerformSearch(data) {
   return Notify("NOTIFY_PERFORM_SEARCH", data);
 }
@@ -220,6 +241,7 @@ am.defineActions({
   RequestRecentLinks,
   RequestMoreRecentLinks,
   RequestHighlightsLinks,
+  RequestInitialPrefs,
   RequestSearchState,
   RequestSearchStrings,
   RequestSearchSuggestions,
@@ -238,7 +260,9 @@ am.defineActions({
   NotifyUpdateSearchString,
   NotifyManageEngines,
   NotifyRemoveFormHistory,
-  NotifyCycleEngine
+  NotifyCycleEngine,
+  NotifyBlockRecommendation,
+  NotifyToggleRecommendations
 });
 
 module.exports = am;

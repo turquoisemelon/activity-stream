@@ -8,26 +8,26 @@ const LinkMenu = React.createClass({
   getDefaultProps() {
     return {
       visible: false,
-      allowBlock: true
+      allowBlock: true,
+      site: {}
     };
   },
   userEvent(event) {
-    const {page, source, index, Experiments, dispatch} = this.props;
+    const {page, source, index, dispatch, site} = this.props;
     if (page && source) {
       let payload = {
         event,
         page: page,
         source: source,
-        action_position: index
+        action_position: index,
+        url: site.recommended ? site.url : null,
+        recommender_type: site.recommended ? site.recommender_type : null
       };
-      if (["BLOCK", "DELETE"].includes(event) && Experiments.data.reverseMenuOptions) {
-        payload.experiment_id = Experiments.data.id;
-      }
       dispatch(actions.NotifyEvent(payload));
     }
   },
   getOptions() {
-    const {site, allowBlock, Experiments, dispatch, page} = this.props;
+    const {site, allowBlock, reverseMenuOptions, dispatch, page} = this.props;
     const isNotDefault = site.type !== FIRST_RUN_TYPE;
 
     let deleteOptions;
@@ -41,9 +41,16 @@ const LinkMenu = React.createClass({
           label: "Dismiss",
           icon: "dismiss",
           userEvent: "BLOCK",
-          onClick: () => dispatch(actions.NotifyBlockURL(site.url))
+          onClick: () => {
+            if (site.recommended) {
+              dispatch(actions.NotifyBlockRecommendation(site.url));
+              dispatch(actions.RequestHighlightsLinks());
+            } else {
+              dispatch(actions.NotifyBlockURL(site.url));
+            }
+          }
         },
-        {
+        !site.recommended && {
           ref: "delete",
           label: "Delete from History",
           icon: "delete",
@@ -52,7 +59,7 @@ const LinkMenu = React.createClass({
         }
       ];
 
-      if (Experiments.data.reverseMenuOptions) {
+      if (reverseMenuOptions) {
         deleteOptions.reverse();
       }
 
@@ -105,13 +112,20 @@ LinkMenu.propTypes = {
   allowBlock: React.PropTypes.bool,
   site: React.PropTypes.shape({
     url: React.PropTypes.string.isRequired,
-    bookmarkGuid: React.PropTypes.string
+    bookmarkGuid: React.PropTypes.string,
+    recommended: React.PropTypes.bool
   }).isRequired,
 
   // This is for events
   page: React.PropTypes.string,
   source: React.PropTypes.string,
-  index: React.PropTypes.number
+  index: React.PropTypes.number,
+  url: React.PropTypes.string,
+  recommender_type: React.PropTypes.string
 };
 
-module.exports = connect(({Experiments}) => ({Experiments}))(LinkMenu);
+module.exports = connect(({Experiments}) => {
+  return {
+    reverseMenuOptions: Experiments.values.reverseMenuOptions
+  };
+})(LinkMenu);

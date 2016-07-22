@@ -4,8 +4,8 @@
 const {Cu} = require("chrome");
 const {before, after} = require("sdk/test/utils");
 const test = require("sdk/test");
+const {getTestActivityStream} = require("./lib/utils");
 const simplePrefs = require("sdk/simple-prefs");
-const {ActivityStreams} = require("lib/ActivityStreams");
 const {PlacesProvider} = require("lib/PlacesProvider");
 const {PreviewProvider} = require("lib/PreviewProvider");
 const {makeCachePromise, makeCountingCachePromise} = require("./lib/cachePromises");
@@ -30,7 +30,7 @@ exports["test preview cache repopulation works"] = function*(assert) {
 
   placesCachePromise = makeCachePromise("places");
   previewsCachePromise = makeCachePromise("previews");
-  let app = new ActivityStreams({previewCacheTimeout: 100});
+  let app = getTestActivityStream({previewCacheTimeout: 100});
   yield placesCachePromise;
   yield previewsCachePromise;
 
@@ -44,7 +44,7 @@ exports["test preview cache repopulation works"] = function*(assert) {
 
 exports["test places cache repopulation works"] = function*(assert) {
   let placesCachePromise = makeCachePromise("places");
-  let app = new ActivityStreams({placesCacheTimeout: 100});
+  let app = getTestActivityStream({placesCacheTimeout: 100});
   yield placesCachePromise;
 
   let expectedRepopulations = 3;

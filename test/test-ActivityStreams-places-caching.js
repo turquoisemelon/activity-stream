@@ -7,8 +7,7 @@ const test = require("sdk/test");
 const tabs = require("sdk/tabs");
 const simplePrefs = require("sdk/simple-prefs");
 const httpd = require("./lib/httpd");
-const {doGetFile} = require("./lib/utils");
-const {ActivityStreams} = require("lib/ActivityStreams");
+const {doGetFile, getTestActivityStream} = require("./lib/utils");
 const {PlacesTestUtils} = require("./lib/PlacesTestUtils");
 const {PlacesProvider} = require("lib/PlacesProvider");
 const {makeCachePromise} = require("./lib/cachePromises");
@@ -154,7 +153,7 @@ exports["test rebuilds don't clobber each other"] = function*(assert) {
   let srv = httpd.startServerAsync(port, null, doGetFile("test/resources"));
   gApp.unload();
   placesCachePromise = makeCachePromise("places");
-  gApp = new ActivityStreams({pageURL: url});
+  gApp = getTestActivityStream({pageURL: url});
   yield placesCachePromise;
 
   // open page
@@ -241,7 +240,7 @@ before(exports, function*() {
   simplePrefs.prefs["query.cache"] = true;
   let placesCachePromise = makeCachePromise("places");
   PlacesProvider.links.init();
-  gApp = new ActivityStreams();
+  gApp = getTestActivityStream();
   gAppURL = gApp.appURLs[1];
   yield placesCachePromise;
 });

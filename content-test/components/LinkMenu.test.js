@@ -15,7 +15,7 @@ const DEFAULT_PROPS = {
   source: "ACTIVITY_FEED",
   index: 3
 };
-const EXPERIMENT_DATA = {Experiments: {data: {id: "exp-01", reverseMenuOptions: true}}};
+const EXPERIMENT_DATA = {Experiments: {values: {reverseMenuOptions: true}}};
 
 describe("LinkMenu", () => {
   let instance;
@@ -63,6 +63,11 @@ describe("LinkMenu", () => {
     assert.isUndefined(contextMenu.refs.dismiss, "hide dismiss");
     assert.isUndefined(contextMenu.refs.delete, "hide delete");
     assert.lengthOf(contextMenu.props.options, 4);
+  });
+
+  it("should hide delete from history option for recommendation", () => {
+    setup({site: {url: "https://foo.com", recommended: true}});
+    assert.isUndefined(contextMenu.refs.delete, "hide delete");
   });
 
   it("should hide dismiss option if allowBlock is false", () => {
@@ -137,6 +142,39 @@ describe("LinkMenu", () => {
     });
   });
 
+  describe("dismiss recommendation", () => {
+    function checkBlockRecommendation(options) {
+      it(`should ${options.ref} recommendation`, done => {
+        let count = 0;
+        setup({site: {url: "https://foo.com", recommender_type: "pocket-trending", recommended: true}}, {dispatch(action) {
+          if (action.type === options.event) {
+            assert.deepEqual(action.data, options.eventData, "event data");
+            count++;
+          }
+          if (action.type === "NOTIFY_USER_EVENT") {
+            assert.equal(action.data.event, options.userEvent);
+            assert.equal(action.data.page, DEFAULT_PROPS.page);
+            assert.equal(action.data.source, DEFAULT_PROPS.source);
+            assert.equal(action.data.action_position, DEFAULT_PROPS.index);
+            assert.equal(action.data.url, "https://foo.com");
+            assert.equal(action.data.recommender_type, "pocket-trending");
+            count++;
+          }
+          if (count === 2) {
+            done();
+          }
+        }});
+        TestUtils.Simulate.click(contextMenu.refs[options.ref]);
+      });
+    }
+    checkBlockRecommendation({
+      ref: "dismiss",
+      event: "NOTIFY_BLOCK_RECOMMENDATION",
+      eventData: DEFAULT_PROPS.site.url,
+      userEvent: "BLOCK"
+    });
+  });
+
   describe("experiment", () => {
     it("should have the delete options in the right order", () => {
       const options = contextMenu.props.options;
@@ -145,37 +183,11 @@ describe("LinkMenu", () => {
       assert.equal(options[options.length - 3].type, "separator", "Third last option is a separator");
     });
     it("should reverse delete options", () => {
-      setup({}, {getState() {
-        return {Experiments: {data: {reverseMenuOptions: true}}};
-      }});
+      setup({}, {getState: () => EXPERIMENT_DATA});
       const options = contextMenu.props.options;
       assert.equal(options[options.length - 1].ref, "dismiss", "Last option is dismiss");
       assert.equal(options[options.length - 2].ref, "delete", "Second last option is delete");
       assert.equal(options[options.length - 3].type, "separator", "Third last option is a separator");
-    });
-    it("should not send the experiment id with non-delete user events", done => {
-      setup({}, {
-        getState: () => EXPERIMENT_DATA,
-        dispatch(action) {
-          if (action.type === "NOTIFY_USER_EVENT") {
-            assert.isUndefined(action.data.experiment_id);
-            done();
-          }
-        }
-      });
-      TestUtils.Simulate.click(contextMenu.refs.openWindow);
-    });
-    it("should send the experiment id with user events", done => {
-      setup({}, {
-        getState: () => EXPERIMENT_DATA,
-        dispatch(action) {
-          if (action.type === "NOTIFY_USER_EVENT") {
-            assert.equal(action.data.experiment_id, "exp-01");
-            done();
-          }
-        }
-      });
-      TestUtils.Simulate.click(contextMenu.refs.delete);
     });
   });
 });
