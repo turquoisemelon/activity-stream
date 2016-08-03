@@ -158,14 +158,98 @@ exports.test_async_insert_all = function*(assert) {
   assert.deepEqual(items[7], [3, 5]);
 };
 
+exports.test_async_get_by_cache_key = function*(assert) {
+  yield gMetadataStore.asyncInsert(metadataFixture);
+
+  for (let fixture of metadataFixture) {
+    let metaObjects = yield gMetadataStore.asyncGetMetadataByCacheKey([fixture.cache_key]);
+    assert.equal(metaObjects.length, 1, "It should fetch one metadata record");
+    let metaObject = metaObjects[0];
+    assert.equal(metaObject.favicons.length, 1, "It should fetch one favicon");
+    assert.equal(metaObject.images.length, fixture.images.length, "It should fetch one favicon");
+  }
+
+  let cacheKeys = metadataFixture.map(fixture => {return fixture.cache_key;});
+  let metaObjects = yield gMetadataStore.asyncGetMetadataByCacheKey(cacheKeys);
+  assert.equal(metaObjects.length, metadataFixture.length, "It should fetch all metadata records");
+};
+
+exports.test_async_get_by_cache_key_in_special_cases = function*(assert) {
+  yield gMetadataStore.asyncInsert(metadataFixture);
+
+  let cacheKeys = metadataFixture.map(fixture => {return fixture.cache_key;});
+  let metaObjects = yield gMetadataStore.asyncGetMetadataByCacheKey(
+    cacheKeys.concat("missing-key1", "missing-key2"));
+  assert.equal(metaObjects.length, metadataFixture.length,
+    "It should fetch all metadata records despite missing keys are presented in the cache keys");
+
+  // Manually set the image type to invalid values
+  yield gMetadataStore.asyncExecuteQuery("UPDATE page_images SET type=-1");
+  let error = false;
+  try {
+    yield gMetadataStore.asyncGetMetadataByCacheKey(cacheKeys);
+  } catch (e) {
+    error = true;
+  }
+  assert.ok(error, "It should raise exception on the invalid image type");
+};
+
+exports.test_on_an_invalid_connection = function*(assert) {
+  yield gMetadataStore.asyncClose();
+
+  let error = false;
+  try {
+    yield gMetadataStore.asyncExecuteQuery("SELECT * FROM page_metadata");
+  } catch (e) {
+    error = true;
+  }
+  assert.ok(error, "It should raise exception if the connection is closed or not established");
+
+  error = false;
+  try {
+    yield gMetadataStore.asycnInsert(metadataFixture);
+  } catch (e) {
+    error = true;
+  }
+  assert.ok(error, "It should raise exception if the connection is closed or not established");
+
+  let cacheKeys = metadataFixture.map(fixture => {return fixture.cache_key;});
+  let metaObjects = yield gMetadataStore.asyncGetMetadataByCacheKey(cacheKeys);
+  assert.equal(metaObjects.length, 0, "It should return an empty array if the connection is closed or not established");
+},
+
+exports.test_color_conversions = function*(assert) {
+  const white = [0, 0, 0];
+  const black = [255, 255, 255];
+  const randomColor = [111, 122, 133];
+
+  assert.deepEqual(white,
+    gMetadataStore._hexToRgb(gMetadataStore._rgbToHex(white)));
+  assert.deepEqual(black,
+    gMetadataStore._hexToRgb(gMetadataStore._rgbToHex(black)));
+  assert.deepEqual(randomColor,
+    gMetadataStore._hexToRgb(gMetadataStore._rgbToHex(randomColor)));
+  assert.equal(gMetadataStore._hexToRgb(gMetadataStore._rgbToHex(null)), null);
+};
+
 exports.test_data_expiry = function*(assert) {
   let item = Object.assign({}, metadataFixture[0]);
+  let expected = 2;
+  let ticked = 0;
+
   gMetadataStore.enableDataExpiryJob(100);
   item.expired_at = Date.now();
   yield gMetadataStore.asyncInsert([].concat(item, metadataFixture.slice(1, 3)));
-  yield waitUntil(() => {return true;}, 1000); // wait for the timer to trigger
+  // it waits until the expired item gets deleted or the waitUntil hits the timeout
+  yield waitUntil(function*() {
+    let items = yield gMetadataStore.asyncExecuteQuery("SELECT * FROM page_metadata");
+    if (items.length === expected || ticked++ > 10) {
+      return true;
+    }
+    return false;
+  }, 1000);
   let items = yield gMetadataStore.asyncExecuteQuery("SELECT * FROM page_metadata");
-  assert.equal(items.length, 2, "It should have deleted the expired page");
+  assert.equal(items.length, expected, "It should have deleted the expired page");
   gMetadataStore.disableDataExpiryJob();
 };
 
