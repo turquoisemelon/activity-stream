@@ -14,7 +14,6 @@ const DEFAULT_FAVICON_BG_COLOR = [150, 150, 150];
 module.exports.justDispatch = (() => ({}));
 
 function getBackgroundRGB(site) {
-
   // This is from firefox
   if (site.favicon_color) {
     return site.favicon_color;
@@ -45,37 +44,37 @@ const selectSpotlight = module.exports.selectSpotlight = createSelector(
   [
     state => state.Highlights
   ],
-  (Highlights) => {
+  Highlights => {
     const rows = Highlights.rows
-    // Only concat first run data if init is true
-    .concat(Highlights.init ? firstRunData.Highlights : [])
-    .map(site => {
-      const newProps = {};
-      const bestImage = getBestImage(site.images);
-      if (bestImage) {
-        newProps.bestImage = bestImage;
-      }
+      // Only concat first run data if init is true
+      .concat(Highlights.init ? firstRunData.Highlights : [])
+      .map(site => {
+        const newProps = {};
+        const bestImage = getBestImage(site.images);
+        if (bestImage) {
+          newProps.bestImage = bestImage;
+        }
 
-      // Use site.background_color if it's defined, otherwise calculate one based on
-      // the favicon_colors or a default color.
-      newProps.backgroundColor = site.background_color || toRGBString(...getBackgroundRGB(site, [200, 200, 200]), BACKGROUND_FADE - 0.1);
-      return Object.assign({}, site, newProps);
-    })
-    .sort((site1, site2) => {
-      const site1Valid = isValidSpotlightSite(site1);
-      const site2Valid = isValidSpotlightSite(site2);
-      if (site2.type === firstRunData.FIRST_RUN_TYPE) {
-        return -1;
-      } else if (site1.type === firstRunData.FIRST_RUN_TYPE) {
-        return 1;
-      } else if (site1Valid && site2Valid) {
-        return 0;
-      } else if (site2Valid) {
-        return 1;
-      } else {
-        return -1;
-      }
-    });
+        // Use site.background_color if it's defined, otherwise calculate one based on
+        // the favicon_colors or a default color.
+        newProps.backgroundColor = site.background_color || toRGBString(...getBackgroundRGB(site, [200, 200, 200]), BACKGROUND_FADE - 0.1);
+        return Object.assign({}, site, newProps);
+      })
+      .sort((site1, site2) => {
+        const site1Valid = isValidSpotlightSite(site1);
+        const site2Valid = isValidSpotlightSite(site2);
+        if (site2.type === firstRunData.FIRST_RUN_TYPE) {
+          return -1;
+        } else if (site1.type === firstRunData.FIRST_RUN_TYPE) {
+          return 1;
+        } else if (site1Valid && site2Valid) {
+          return 0;
+        } else if (site2Valid) {
+          return 1;
+        } else {
+          return -1;
+        }
+      });
     return Object.assign({}, Highlights, {rows});
   }
 );
@@ -84,7 +83,7 @@ const selectTopSites = module.exports.selectTopSites = createSelector(
   [
     state => state.TopSites
   ],
-  (TopSites) => {
+  TopSites => {
     return Object.assign({}, TopSites, {
       rows: dedupe.one(TopSites.rows
         // Add first run stuff to the end if init has already happened
@@ -101,7 +100,6 @@ module.exports.selectNewTabSites = createSelector(
     state => state.Experiments
   ],
   (TopSites, History, Spotlight, Experiments) => {
-
     // Remove duplicates
     // Note that we have to limit the length of topsites, spotlight so we
     // don't dedupe against stuff that isn't shown
@@ -132,7 +130,7 @@ module.exports.selectNewTabSites = createSelector(
 function selectSiteProperties(site) {
   const metadataFavicon = site.favicons && site.favicons[0] && site.favicons[0].url;
   const favicon = site.favicon_url || metadataFavicon || site.favicon;
-  const parsedUrl = site.parsedUrl || urlParse(site.url || "") ;
+  const parsedUrl = site.parsedUrl || urlParse(site.url || "");
   const label = prettyUrl(parsedUrl.hostname);
   return {favicon, parsedUrl, label};
 }

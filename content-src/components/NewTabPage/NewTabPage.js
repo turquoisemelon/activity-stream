@@ -36,8 +36,8 @@ const NewTabPage = React.createClass({
     document.title = "New Tab";
     setFavicon("newtab-icon.svg");
   },
-  componentDidUpdate() {
-    if (this.props.isReady && !this.state.renderedOnce) {
+  componentWillReceiveProps(nextProps) {
+    if (nextProps.isReady && !this.state.renderedOnce) {
       this.props.dispatch(actions.NotifyPerf("NEWTAB_RENDER"));
       this.setState({renderedOnce: true});
     }
@@ -50,15 +50,14 @@ const NewTabPage = React.createClass({
     return (<main className="new-tab">
       <div className="new-tab-wrapper">
         <section>
-          <Search/>
+          <Search />
         </section>
 
         <Loader
           className="loading-notice"
           show={!this.props.isReady}
           label="Hang on tight! We are analyzing your history to personalize your experience"
-          centered
-        />
+          centered={true} />
 
         <div className={classNames("show-on-init", {on: this.props.isReady})}>
           <section>

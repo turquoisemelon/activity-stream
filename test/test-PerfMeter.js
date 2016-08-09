@@ -37,7 +37,7 @@ function openTestTab(openUrl, notifyEvent) {
     }
 
     if (notifyEvent) {
-      Services.obs.addObserver(onNotify, notifyEvent);
+      Services.obs.addObserver(onNotify, notifyEvent, false);
     }
 
     // open the page in timeout, to make it fire after we return
@@ -51,7 +51,7 @@ function prefSetter(value) {
       Services.obs.removeObserver(onPrefChange, "performance-pref-changed");
       resolve();
     }
-    Services.obs.addObserver(onPrefChange, "performance-pref-changed");
+    Services.obs.addObserver(onPrefChange, "performance-pref-changed", false);
     simplePrefs.prefs["performance.log"] = value;
   });
 }
@@ -128,7 +128,7 @@ exports.test_PerfMeter_events = function*(assert) {
       Services.obs.removeObserver(onNotify, "performance-log-complete");
       resolve();
     }
-    Services.obs.addObserver(onNotify, "performance-log-complete");
+    Services.obs.addObserver(onNotify, "performance-log-complete", false);
     tabData.tab.reload();
   });
 
@@ -217,7 +217,7 @@ exports.test_PerfMeter_tab_hygiene = function*(assert) {
   assert.deepEqual(app.performanceData, {}, "no performance data");
 };
 
-exports.test_PerfMeter_sample_stats = function*(assert) {
+exports.test_PerfMeter_sample_stats = function(assert) {
   let perfMeter = new PerfMeter("http://foo.com");
   perfMeter._addSampleValue(2);
   assert.deepEqual(perfMeter._computeStats(), {total: 1, mean: 2, std: 0, median: 2}, "stats match");
@@ -268,7 +268,7 @@ exports.test_PerfMeter_tab_restore = function*(assert) {
       Services.obs.removeObserver(onNotify, "performance-log-complete");
       resolve(tab);
     }
-    Services.obs.addObserver(onNotify, "performance-log-complete");
+    Services.obs.addObserver(onNotify, "performance-log-complete", false);
     tab = gBrowser.addTab(appUrl);
   });
 
@@ -285,7 +285,7 @@ exports.test_PerfMeter_tab_restore = function*(assert) {
       Services.obs.removeObserver(onRestore, "sessionstore-debug-tab-restored");
       resolve(tab);
     }
-    Services.obs.addObserver(onRestore, "sessionstore-debug-tab-restored");
+    Services.obs.addObserver(onRestore, "sessionstore-debug-tab-restored", false);
     tab = SessionStore.undoCloseTab(browserWindow);
   });
 
@@ -296,7 +296,7 @@ exports.test_PerfMeter_tab_restore = function*(assert) {
       Services.obs.removeObserver(onNotify, "performance-log-complete");
       resolve();
     }
-    Services.obs.addObserver(onNotify, "performance-log-complete");
+    Services.obs.addObserver(onNotify, "performance-log-complete", false);
 
     tab.linkedBrowser.goBack();
   });

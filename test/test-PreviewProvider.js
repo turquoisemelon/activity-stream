@@ -13,10 +13,10 @@ const {PreviewProvider} = require("lib/PreviewProvider");
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
 const DISALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
 const URL_FILTERS = [
-  (item) => !!item.url,
-  (item) => !!(new URL(item.url)),
-  (item) => ALLOWED_PROTOCOLS.has(new URL(item.url).protocol),
-  (item) => !DISALLOWED_HOSTS.has(new URL(item.url).hostname)
+  item => !!item.url,
+  item => !!(new URL(item.url)),
+  item => ALLOWED_PROTOCOLS.has(new URL(item.url).protocol),
+  item => !DISALLOWED_HOSTS.has(new URL(item.url).hostname)
 ];
 
 Cu.importGlobalProperties(["URL"]);
@@ -49,7 +49,7 @@ exports.test_only_request_links_once = function*(assert) {
         )
     );
     // count the times each url has been requested
-    data.urls.forEach(url => urlsRequested[url] = (urlsRequested[url] + 1) || 1);
+    data.urls.forEach(url => (urlsRequested[url] = (urlsRequested[url] + 1) || 1));
     response.setHeader("Content-Type", "application/json", false);
     response.write(JSON.stringify({"urls": {urlsRequested}}));
   });
@@ -68,7 +68,7 @@ exports.test_only_request_links_once = function*(assert) {
   });
 };
 
-exports.test_filter_urls = function*(assert) {
+exports.test_filter_urls = function(assert) {
   const fakeData = {
     get validLinks() {
       return [
@@ -100,7 +100,7 @@ exports.test_filter_urls = function*(assert) {
   assert.deepEqual(badUrls, [], "all bad links are removed");
 };
 
-exports.test_sanitize_urls = function*(assert) {
+exports.test_sanitize_urls = function(assert) {
   let sanitizedUrl = gPreviewProvider._sanitizeURL(null);
   assert.equal(sanitizedUrl, "", "if an empty url is passed, return the empty string");
 
@@ -138,7 +138,7 @@ exports.test_sanitize_urls = function*(assert) {
   assert.equal(expectedUrl, sanitizedUrl, "%s doesn't cause unhandled exception");
 };
 
-exports.test_process_links = function*(assert) {
+exports.test_process_links = function(assert) {
   const fakeData = [
     {"url": "http://foo.com/#foo", "title": "blah"},
     {"url": "http://foo.com/#bar", "title": "blah"},
@@ -160,7 +160,7 @@ exports.test_process_links = function*(assert) {
   });
 };
 
-exports.test_dedupe_urls = function*(assert) {
+exports.test_dedupe_urls = function(assert) {
   const fakeData = [
     {"url": "http://foo.com/", "title": "blah"},
     {"url": "http://www.foo.com/", "title": "blah"},
@@ -302,15 +302,15 @@ exports.test_get_enhanced_previews_only = function*(assert) {
   assert.equal(links.length, 1, "when previewOnly is set, return only links with previews");
 };
 
-before(exports, function*() {
+before(exports, function() {
   simplePrefs.prefs["embedly.endpoint"] = `http://localhost:${gPort}/embedlyLinkData`;
   simplePrefs.prefs["previews.enabled"] = true;
   let mockMetadataStore = {
-    asyncInsert: function(data) {
+    asyncInsert(data) {
       gMetadataStore.push(data);
       return gMetadataStore;
     },
-    asyncGetMetadataByCacheKey: function(cacheKeys) {
+    asyncGetMetadataByCacheKey(cacheKeys) {
       let items = [];
       gMetadataStore.forEach(item => {
         if (cacheKeys.includes(item.cache_key)) {
@@ -320,11 +320,11 @@ before(exports, function*() {
       return items;
     }
   };
-  let mockTabTracker = {handlePerformanceEvent: function() {}, generateEvent: function() {}};
+  let mockTabTracker = {handlePerformanceEvent() {}, generateEvent() {}};
   gPreviewProvider = new PreviewProvider(mockTabTracker, mockMetadataStore, {initFresh: true});
 });
 
-after(exports, function*() {
+after(exports, function() {
   simplePrefs.prefs["embedly.endpoint"] = gPrefEmbedly;
   simplePrefs.prefs["previews.enabled"] = gPrefEnabled;
   gMetadataStore = [];
