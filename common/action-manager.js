@@ -3,6 +3,8 @@ const ActionManager = require("./ActionManager");
 const eventConstants = require("./event-constants");
 
 const am = new ActionManager([
+  "WEIGHTED_HIGHLIGHTS_REQUEST",
+  "WEIGHTED_HIGHLIGHTS_RESPONSE",
   "TOP_FRECENT_SITES_REQUEST",
   "TOP_FRECENT_SITES_RESPONSE",
   "RECEIVE_CURRENT_ENGINE",
@@ -42,9 +44,10 @@ const am = new ActionManager([
   "NOTIFY_UPDATE_SEARCH_STRING",
   "NOTIFY_BLOCK_RECOMMENDATION",
   "NOTIFY_TOGGLE_RECOMMENDATIONS",
-  "RECEIVE_RECOMMENDATION_TOGGLE",
   "PREFS_REQUEST",
-  "PREFS_RESPONSE"
+  "PREFS_RESPONSE",
+  "NOTIFY_UPDATE_PREF",
+  "PREF_CHANGED_RESPONSE"
 ]);
 
 // This is a a set of actions that have sites in them,
@@ -166,6 +169,10 @@ function RequestExperiments() {
   return RequestExpect("EXPERIMENTS_REQUEST", "EXPERIMENTS_RESPONSE");
 }
 
+function RequestWeightedHighlights() {
+  return RequestExpect("WEIGHTED_HIGHLIGHTS_REQUEST", "WEIGHTED_HIGHLIGHTS_RESPONSE");
+}
+
 function NotifyBookmarkAdd(url) {
   return Notify("NOTIFY_BOOKMARK_ADD", url);
 }
@@ -230,6 +237,10 @@ function NotifyOpenWindow(data) {
   return Notify("NOTIFY_OPEN_WINDOW", data);
 }
 
+function NotifyUpdatePref(name, value) {
+  return Notify("NOTIFY_UPDATE_PREF", {name, value});
+}
+
 am.defineActions({
   Notify,
   Response,
@@ -245,6 +256,7 @@ am.defineActions({
   RequestSearchStrings,
   RequestSearchSuggestions,
   RequestExperiments,
+  RequestWeightedHighlights,
   NotifyBlockURL,
   NotifyUnblockURL,
   NotifyUnblockAll,
@@ -261,7 +273,8 @@ am.defineActions({
   NotifyRemoveFormHistory,
   NotifyCycleEngine,
   NotifyBlockRecommendation,
-  NotifyToggleRecommendations
+  NotifyToggleRecommendations,
+  NotifyUpdatePref
 });
 
 module.exports = am;

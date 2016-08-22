@@ -1,6 +1,11 @@
 const faker = require("test/faker");
 
 module.exports = {
+  "WeightedHighlights": {
+    "rows": faker.createRows({images: 3}),
+    "error": false,
+    "weightedHighlights": false
+  },
   "TopSites": {
     "rows": faker.createRows({images: 3}),
     "error": false
@@ -34,6 +39,10 @@ module.exports = {
   },
   "Experiments": {
     "values": {},
+    "error": false
+  },
+  "Prefs": {
+    "prefs": {},
     "error": false
   }
 };
