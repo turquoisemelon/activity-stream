@@ -137,6 +137,7 @@ const gMetadataFixture = [
     title: "We're building a better Internet",
     media: {type: "video", url: "https://www.mozilla.org/media/video/mozilla.mp4"},
     expired_at: 1475280000000, // "2016-10-01 00:00:00",
+    metadata_source: "Embedly",
     type: "html",
     favicon_colors,
     images
@@ -149,6 +150,7 @@ const gMetadataFixture = [
     title: "Browse Freely",
     media: {type: "video", url: "https://www.mozilla.org/media/video/firefox.mp4"},
     expired_at: 1475280000000, // "2016-10-01 00:00:00",
+    metadata_source: "Embedly",
     type: "html",
     favicon_colors: favicon_colors_firefox,
     images: images_firefox
@@ -161,10 +163,48 @@ const gMetadataFixture = [
     title: "Browse Freely",
     media: {type: "video", url: "https://www.mozilla.org/media/video/firefox.mp4"},
     expired_at: 1475280000000, // "2016-10-01 00:00:00",
+    metadata_source: "Embedly",
     type: "html",
     favicon_colors: favicon_colors_firefox,
     images: images_firefox
   }
 ];
 
+const gMigrationV1Fixture = [
+  {
+    version: "1.0.0",
+    description: "A dummy migration as a sentinel",
+    statements: []
+  },
+  {
+    version: "1.0.1",
+    description: "A test migration",
+    statements: ["ALTER TABLE page_metadata ADD COLUMN foo VARCHAR(32)"]
+  },
+  {
+    version: "1.0.2",
+    description: "One more test migration",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS test_table_temp (
+        id INTEGER PRIMARY KEY,
+        col1 VARCHAR(32)
+      )`,
+      "ALTER TABLE test_table_temp RENAME TO test_table"
+    ]
+  }
+];
+
+const gMigrationV2Fixture = [
+  ...gMigrationV1Fixture,
+  {
+    version: "1.0.3",
+    description: "The third test migration",
+    statements: [
+      "ALTER TABLE test_table ADD COLUMN bar VARCHAR(32)"
+    ]
+  }
+];
+
 exports.metadataFixture = gMetadataFixture;
+exports.migrationV1Fixture = gMigrationV1Fixture;
+exports.migrationV2Fixture = gMigrationV2Fixture;

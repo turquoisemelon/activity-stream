@@ -2,7 +2,7 @@
 "use strict";
 
 const {before, after, waitUntil} = require("sdk/test/utils");
-const {MetadataStore} = require("lib/MetadataStore.js");
+const {MetadataStore} = require("addon/MetadataStore.js");
 const {metadataFixture} = require("./lib/MetastoreFixture.js");
 const fileIO = require("sdk/io/file");
 
@@ -264,9 +264,7 @@ before(exports, function*() {
 });
 
 after(exports, function*() {
-  yield gMetadataStore.asyncReset();
-  yield waitForAsyncReset();
-  yield gMetadataStore.asyncClose();
+  yield gMetadataStore.asyncTearDown();
 });
 
 require("sdk/test").run(exports);
