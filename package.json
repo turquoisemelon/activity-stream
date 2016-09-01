@@ -1,7 +1,7 @@
 {
   "name": "activity-streams",
   "description": "A rich visual history feed and a reimagined home page make it easier than ever to find exactly what you're looking for in Firefox.\n\nLearn more about this Test Pilot experiment at https://testpilot.firefox.com/.",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "author": "Mozilla (https://mozilla.org/)",
   "bugs": {
     "url": "https://github.com/mozilla/activity-stream/issues"
@@ -67,7 +67,7 @@
     "mkdirp": "0.5.1",
     "mocha": "3.0.2",
     "node-sass": "3.8.0",
-    "npm-run-all": "3.0.0",
+    "npm-run-all": "3.1.0",
     "react-addons-test-utils": "15.3.1",
     "requirejs": "2.2.0",
     "rimraf": "2.5.4",
@@ -137,6 +137,13 @@
       "title": "Embedly Endpoint",
       "type": "string",
       "value": "https://embedly-proxy.services.mozilla.com/v2/extract",
+      "hidden": true
+    },
+    {
+      "name": "metadata.endpoint",
+      "title": "Local Metadata Endpoint",
+      "type": "string",
+      "value": "https://page-metadata-service.stage.mozaws.net/v1/metadata",
       "hidden": true
     },
     {
