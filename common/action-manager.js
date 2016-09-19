@@ -40,6 +40,7 @@ const am = new ActionManager([
   "NOTIFY_ROUTE_CHANGE",
   "NOTIFY_PERFORMANCE",
   "NOTIFY_USER_EVENT",
+  "NOTIFY_FILTER_QUERY",
   "NOTIFY_OPEN_WINDOW",
   "NOTIFY_UPDATE_SEARCH_STRING",
   "NOTIFY_BLOCK_RECOMMENDATION",
@@ -48,7 +49,12 @@ const am = new ActionManager([
   "PREFS_RESPONSE",
   "NOTIFY_UPDATE_PREF",
   "PREF_CHANGED_RESPONSE",
-  "NOTIFY_RATE_METADATA"
+  "NOTIFY_RATE_METADATA",
+  "SHARE_PROVIDERS_REQUEST",
+  "SHARE_PROVIDERS_RESPONSE",
+  "NOTIFY_SHARE_URL",
+  "NOTIFY_COPY_URL",
+  "NOTIFY_EMAIL_URL"
 ]);
 
 // This is a a set of actions that have sites in them,
@@ -60,13 +66,25 @@ am.ACTIONS_WITH_SITES = new Set([
   "HIGHLIGHTS_LINKS_RESPONSE"
 ].map(type => am.type(type)));
 
-function Notify(type, data) {
+/**
+ * Notify - Notify add-on action
+ *
+ * @param  {string} type  name of the action
+ * @param  {obj} data    (optional) data associated with the action
+ * @param  {obj} meta    (optional) options to be included in the meta part of the action.
+ *               meta.skipMasterStore - Does not dispatch to the master store
+ * @return {obj} action   The final action as a plain object
+ */
+function Notify(type, data, meta) {
   const action = {
     type,
     meta: {broadcast: eventConstants.CONTENT_TO_ADDON}
   };
   if (data) {
     action.data = data;
+  }
+  if (meta) {
+    action.meta = Object.assign(action.meta, meta);
   }
   return action;
 }
@@ -163,7 +181,7 @@ function NotifyManageEngines() {
 }
 
 function NotifyUpdateSearchString(searchString) {
-  return Notify("NOTIFY_UPDATE_SEARCH_STRING", {searchString});
+  return Notify("NOTIFY_UPDATE_SEARCH_STRING", {searchString}, {skipMasterStore: true});
 }
 
 function RequestExperiments() {
@@ -238,12 +256,32 @@ function NotifyEvent(data) {
   return Notify("NOTIFY_USER_EVENT", data);
 }
 
+function NotifyFilterQuery(data) {
+  return Notify("NOTIFY_FILTER_QUERY", data);
+}
+
 function NotifyOpenWindow(data) {
   return Notify("NOTIFY_OPEN_WINDOW", data);
 }
 
 function NotifyUpdatePref(name, value) {
   return Notify("NOTIFY_UPDATE_PREF", {name, value});
+}
+
+function RequestShareProviders() {
+  return RequestExpect("SHARE_PROVIDERS_REQUEST", "SHARE_PROVIDERS_RESPONSE");
+}
+
+function NotifyCopyUrl(url) {
+  return Notify("NOTIFY_COPY_URL", {url});
+}
+
+function NotifyEmailUrl(url, title) {
+  return Notify("NOTIFY_EMAIL_URL", {url, title});
+}
+
+function NotifyShareUrl(url, title, provider) {
+  return Notify("NOTIFY_SHARE_URL", {url, title, provider});
 }
 
 am.defineActions({
@@ -272,6 +310,7 @@ am.defineActions({
   NotifyRouteChange,
   NotifyPerf,
   NotifyEvent,
+  NotifyFilterQuery,
   NotifyOpenWindow,
   NotifyUpdateSearchString,
   NotifyManageEngines,
@@ -280,7 +319,11 @@ am.defineActions({
   NotifyBlockRecommendation,
   NotifyToggleRecommendations,
   NotifyUpdatePref,
-  NotifyRateMetadata
+  NotifyRateMetadata,
+  RequestShareProviders,
+  NotifyCopyUrl,
+  NotifyEmailUrl,
+  NotifyShareUrl
 });
 
 module.exports = am;

@@ -51,6 +51,7 @@ describe("NewTabPage", () => {
     const inner = TestUtils.findRenderedComponentWithType(container, NewTabPage);
     Object.keys(NewTabPage.propTypes).forEach(key => assert.property(inner.props, key));
   });
+
   describe("settings", () => {
     it("should hide the settings menu by default", () => {
       assert.equal(instance.refs.settingsMenu.props.visible, false);
@@ -105,6 +106,7 @@ describe("NewTabPage", () => {
           assert.equal(a.data.page, "NEW_TAB");
           assert.equal(a.data.source, "TOP_SITES");
           assert.equal(a.data.action_position, 0);
+          assert.equal(a.data.metadata_source, "EmbedlyTest");
           done();
         }
       });
@@ -118,6 +120,7 @@ describe("NewTabPage", () => {
           assert.equal(a.data.page, "NEW_TAB");
           assert.equal(a.data.source, "FEATURED");
           assert.equal(a.data.action_position, 0);
+          assert.equal(a.data.metadata_source, "EmbedlyTest");
           done();
         }
       });
@@ -131,6 +134,7 @@ describe("NewTabPage", () => {
           assert.equal(a.data.page, "NEW_TAB");
           assert.equal(a.data.source, "ACTIVITY_FEED");
           assert.equal(a.data.action_position, 0);
+          assert.equal(a.data.metadata_source, "EmbedlyTest");
           done();
         }
       });

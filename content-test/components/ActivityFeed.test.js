@@ -191,6 +191,7 @@ describe("GroupedActivityFeed", () => {
           assert.equal(a.data.event, "CLICK");
           assert.equal(a.data.page, "NEW_TAB");
           assert.equal(a.data.action_position, 0);
+          assert.equal(a.data.metadata_source, "EmbedlyTest");
           done();
         }
       }
@@ -198,6 +199,39 @@ describe("GroupedActivityFeed", () => {
       const link = TestUtils.scryRenderedComponentsWithType(instance, ActivityFeedItem)[0].refs.link;
       TestUtils.Simulate.click(link);
     });
+  });
+});
+
+describe("GroupedActivityFeed filtered", () => {
+  function doFilter(filter) {
+    const sites = [faker.createSite({
+      moment: faker.moment(),
+      override: {
+        title: "the title goes here",
+        url: "https://www.domain.com/path"
+      }
+    })];
+    const instance = renderWithProvider(<GroupedActivityFeed sites={sites} filter={filter} />);
+    return TestUtils.scryRenderedDOMComponentsWithClass(instance, "activity-feed");
+  }
+
+  it("should filter on single words in title", () => {
+    assert.lengthOf(doFilter("title"), 1);
+  });
+  it("should filter on single words in url", () => {
+    assert.lengthOf(doFilter("domain"), 1);
+  });
+  it("should filter out non-matches", () => {
+    assert.lengthOf(doFilter("nothere"), 0);
+  });
+  it("should filter on multiple words", () => {
+    assert.lengthOf(doFilter("title domain"), 1);
+  });
+  it("should filter out partial matches", () => {
+    assert.lengthOf(doFilter("title nothere"), 0);
+  });
+  it("should filter case insensitively", () => {
+    assert.lengthOf(doFilter("TITLE"), 1);
   });
 });
 

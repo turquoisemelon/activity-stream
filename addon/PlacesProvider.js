@@ -445,15 +445,17 @@ Links.prototype = {
     // In general the groupby behavior in the absence of aggregates is not
     // defined in SQL, hence we are relying on sqlite implementation that may
     // change in the future.
-    let sqlQuery = `SELECT url, title, frecency, guid,
+    let sqlQuery = `SELECT url, title, frecency, guid, bookmarkGuid,
                           last_visit_date / 1000 as lastVisitDate, favicon, mimeType,
                           "history" as type
                     FROM
                     (
-                      SELECT rev_host, moz_places.url, moz_favicons.data as favicon, mime_type as mimeType, title, frecency, last_visit_date, moz_places.guid as guid
+                      SELECT rev_host, moz_places.url, moz_favicons.data as favicon, mime_type as mimeType, moz_places.title, frecency, last_visit_date, moz_places.guid as guid, moz_bookmarks.guid as bookmarkGuid
                       FROM moz_places
                       LEFT JOIN moz_favicons
                       ON favicon_id = moz_favicons.id
+                      LEFT JOIN moz_bookmarks
+                      on moz_places.id = moz_bookmarks.fk
                       WHERE hidden = 0 AND last_visit_date NOTNULL
                       AND moz_places.url NOT IN (${blockedURLs})
                       ORDER BY rev_host, frecency, last_visit_date, moz_places.url DESC
@@ -463,7 +465,7 @@ Links.prototype = {
                     LIMIT :limit`;
 
     let links = yield this.executePlacesQuery(sqlQuery, {
-      columns: ["url", "guid", "title", "lastVisitDate", "frecency", "favicon", "mimeType", "type"],
+      columns: ["url", "guid", "bookmarkGuid", "title", "lastVisitDate", "frecency", "favicon", "mimeType", "type"],
       params: {limit}
     });
 
@@ -621,9 +623,7 @@ Links.prototype = {
                         ORDER BY b.dateAdded DESC
                         LIMIT :limitBookmarks
                       )
-
                       UNION ALL
-
                       SELECT * FROM (
                         SELECT p.url as url,
                                p.guid as guid,
@@ -659,6 +659,54 @@ Links.prototype = {
       columns: ["bookmarkId", "bookmarkTitle", "bookmarkGuid", "bookmarkDateCreated", "url", "guid", "title",
                 "lastVisitDate", "frecency", "visitCount", "type", "lastModified", "favicon", "mimeType"],
       params
+    });
+
+    links = this._faviconBytesToDataURI(links);
+    return links.filter(link => LinkChecker.checkLoadURI(link.url));
+  }),
+
+  /**
+   * Obtain a set of links to rank.
+   * Get MAX(all links visited in the past 4 days, last 20 links).
+   * Last 20 links is used as fallback in case there is no recent history.
+   *
+   * @param {Object} options
+   *        {Integer} limit: Maximum number of results to return. Max 20
+   *
+   * @returns {Promise} Returns a promise with the array of links as payload.
+   */
+  getRecentlyVisited: Task.async(function*(options = {}) {
+    let {ignoreBlocked} = options;
+
+    let blockedURLs = ignoreBlocked ? [] : this.blockedURLs.items().map(item => `"${item}"`);
+
+    let sqlQuery = `SELECT p.url as url,
+                           p.guid as guid,
+                           f.data as favicon,
+                           f.mime_type as mimeType,
+                           p.title as title,
+                           p.frecency as frecency,
+                           p.visit_count as visitCount,
+                           p.last_visit_date / 1000 as lastVisitDate,
+                           "history" as type,
+                           b.id as bookmarkId,
+                           b.guid as bookmarkGuid,
+                           b.title as bookmarkTitle,
+                           b.lastModified / 1000 as lastModified,
+                           b.dateAdded / 1000 as bookmarkDateCreated
+                    FROM moz_places p
+                    LEFT JOIN moz_bookmarks b
+                      ON b.fk = p.id
+                    LEFT JOIN moz_favicons f
+                      ON p.favicon_id = f.id
+                    WHERE datetime(p.last_visit_date / 1000 / 1000, 'unixepoch') > datetime('now', '${HIGHLIGHTS_THRESHOLDS.ageLimit}')
+                    AND p.url NOT IN (${blockedURLs})
+                    AND p.title NOT NULL
+                    AND p.rev_host NOT IN (${REV_HOST_BLACKLIST})`;
+
+    let links = yield this.executePlacesQuery(sqlQuery, {
+      columns: ["bookmarkId", "bookmarkTitle", "bookmarkGuid", "bookmarkDateCreated", "url", "guid", "title",
+        "lastVisitDate", "frecency", "visitCount", "type", "lastModified", "favicon", "mimeType"]
     });
 
     links = this._faviconBytesToDataURI(links);

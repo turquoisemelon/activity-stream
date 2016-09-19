@@ -79,7 +79,8 @@ function createSite(optional = {}) {
     "description": faker.lorem.sentences(),
     "favicon_url": BASE_TIP_TOP_FAVICON_URL + tiptopSite.image_url || faker.image.imageUrl(),
     "media": {},
-    "provider_name": name
+    "provider_name": name,
+    "metadata_source": "EmbedlyTest"
   };
 
   if (options.override) {
@@ -128,7 +129,11 @@ function createSpotlightItem(options = {}) {
     options.images = 1;
   }
   const site = createSite(options);
-  return selectSpotlight({Highlights: {rows: [site]}, Prefs: {prefs: {}}}).rows[0];
+  return selectSpotlight({
+    Highlights: {rows: [site]},
+    WeightedHighlights: {rows: [site]},
+    Prefs: {prefs: {}}
+  }).rows[0];
 }
 
 function range(min, max, increment = 1) {

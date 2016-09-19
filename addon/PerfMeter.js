@@ -5,19 +5,11 @@ Cu.import("resource://gre/modules/Services.jsm");
 const tabs = require("sdk/tabs");
 const simplePrefs = require("sdk/simple-prefs");
 
+const {absPerf} = require("common/AbsPerf");
+
 const VALID_TELEMETRY_TAGS = new Set([
   "TAB_READY",
   "WORKER_ATTACHED",
-  "TOP_FRECENT_SITES_REQUEST",
-  "TOP_FRECENT_SITES_RESPONSE",
-  "RECENT_BOOKMARKS_REQUEST",
-  "RECENT_BOOKMARKS_RESPONSE",
-  "RECENT_LINKS_REQUEST",
-  "RECENT_LINKS_RESPONSE",
-  "HIGHLIGHTS_LINKS_REQUEST",
-  "HIGHLIGHTS_LINKS_RESPONSE",
-  "SEARCH_STATE_REQUEST",
-  "SEARCH_STATE_RESPONSE",
   "NOTIFY_PERFORMANCE"
 ]);
 
@@ -51,7 +43,7 @@ PerfMeter.prototype = {
   },
 
   _isLoadCompleteEvent(item) {
-    return (item.data && item.data === "NEWTAB_RENDER");
+    return !!(item.data && item.data === "NEWTAB_RENDER");
   },
 
   _twoDigitsRound(number) {
@@ -61,7 +53,7 @@ PerfMeter.prototype = {
   _computeStats() {
     let total = this._stats.samples.length;
     // deal with median first
-    let sorted = this._stats.samples.sort();
+    let sorted = this._stats.samples.sort((a, b) => a - b);
     let median;
     let index = Math.floor(total / 2);
     // if there's odd number of samples, take a middle one
@@ -100,11 +92,10 @@ PerfMeter.prototype = {
 
   onPrefChange() {
     this._active = simplePrefs.prefs["performance.log"];
-    Services.obs.notifyObservers(null, "performance-pref-changed", null);
   },
 
   isActivityStreamsURL(URL) {
-    return this._trackableURLs.indexOf(URL) !== -1;
+    return this._trackableURLs.includes(URL);
   },
 
   onReady(tab) {
@@ -118,6 +109,8 @@ PerfMeter.prototype = {
   },
 
   onClose(tab) {
+    // Removes the listener for ready, just in case "ready" never fired.
+    tab.removeListener("ready", this.onReady);
     delete this._tabs[tab.id];
   },
 
@@ -125,7 +118,7 @@ PerfMeter.prototype = {
     let item = {tag: "TAB_OPEN", start: 0};
     this._tabs[tab.id] = {
       tab,
-      openAt: Date.now(),
+      openAt: absPerf.now(),
       events: [item],
       requests: new Map(),
       workerWasAttached: false
@@ -156,14 +149,14 @@ PerfMeter.prototype = {
             {tag: "TAB_READY", start: 0}
           ];
           tabData.requests = new Map();
-          tabData.openAt = Date.now();
+          tabData.openAt = absPerf.now();
         }
         tabData.workerWasAttached = true;
       }
 
       let item = {
         tag,
-        start: Date.now() - tabData.openAt,
+        start: absPerf.now() - tabData.openAt,
         data
       };
 

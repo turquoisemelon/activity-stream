@@ -8,6 +8,9 @@ const {
   selectSpotlight,
   selectTopSites,
   selectNewTabSites,
+  selectHistory,
+  selectWeightedHighlights,
+  selectAndDedupe,
   SPOTLIGHT_LENGTH
 } = require("selectors/selectors");
 const {rawMockData, createMockProvider} = require("test/test-utils");
@@ -153,6 +156,39 @@ describe("selectors", () => {
       assert.deepEqual(result.rows, [{url: "http://foo.com"}]);
     });
   });
+  describe("selectHistory weightedHighlights pref is false", () => {
+    let state;
+    let fakeStateNoWeights;
+    beforeEach(() => {
+      fakeStateNoWeights = Object.assign({}, fakeState, {
+        Prefs: {
+          prefs: {
+            weightedHighlights: false,
+            recommendations: true
+          }
+        }
+      });
+      state = selectHistory(fakeStateNoWeights);
+    });
+    it("should select Highlights rows when weightedHighlights pref is false", () => {
+      // Because of the sorting cannot check links. If `selectSpotlight` is called then recommendations is read
+      // and that can only happen if Spotlight links were selected.
+      assert.ok(state.Spotlight.recommendationShown);
+    });
+  });
+  describe("selectHistory weightedHighlights pref is true", () => {
+    let state;
+    let fakeStateWithWeights = Object.assign({}, fakeState, {Prefs: {prefs: {weightedHighlights: true}}});
+    beforeEach(() => {
+      state = selectHistory(fakeStateWithWeights);
+    });
+    it("should select WeightedHighlights when weightedHighlights pref is true", () => {
+      // Because of the call to assignImageAndBackgroundColor the two `rows` prop are not identical.
+      state.Spotlight.rows.forEach((row, i) => {
+        assert.equal(row.url, fakeStateWithWeights.WeightedHighlights.rows[i].url);
+      });
+    });
+  });
   describe("selectNewTabSites", () => {
     let state;
     beforeEach(() => {
@@ -188,19 +224,107 @@ describe("selectors", () => {
       state = selectNewTabSites(Object.assign({}, fakeState, rate));
       assert.isTrue(state.Spotlight.metadataRating);
     });
-    it("should render the correct Spotlight items for weightedHighlights", () => {
+    it("should render the correct Spotlight items for weightedHighlights, and correct number of items", () => {
       let weightedHighlights = {
-        WeightedHighlights: {rows: [{url: "http://foo.com"}, {url: "http://www.foo.com"}]},
+        WeightedHighlights: {
+          rows: [{url: "http://foo1.com"}, {url: "http://www.foo2.com"}, {url: "http://www.foo3.com"},
+            {url: "http://foo4.com"}, {url: "http://www.foo5.com"}, {url: "http://www.foo6.com"}]
+        },
         Prefs: {prefs: {weightedHighlights: true}}
       };
 
       state = selectNewTabSites(Object.assign({}, fakeState, weightedHighlights));
       assert.property(state.Spotlight, "weightedHighlights");
       assert.isTrue(state.Spotlight.weightedHighlights);
-      assert.equal(state.Spotlight.rows.length, weightedHighlights.WeightedHighlights.rows.length);
+      assert.equal(state.Spotlight.rows.length, weightedHighlights.WeightedHighlights.rows.length + firstRunData.Highlights.length);
+      for (let i = 0; i < weightedHighlights.WeightedHighlights.rows.length; i++) {
+        assert.equal(state.Spotlight.rows[i].url, weightedHighlights.WeightedHighlights.rows[i].url);
+      }
+    });
+    it("should render first run highlights of fresh profiles", () => {
+      let weightedHighlights = {
+        WeightedHighlights: {rows: [], init: true},
+        Prefs: {prefs: {weightedHighlights: true}}
+      };
+
+      state = selectNewTabSites(Object.assign({}, fakeState, weightedHighlights));
+      assert.equal(state.Spotlight.rows.length, firstRunData.Highlights.length);
       state.Spotlight.rows.forEach((row, i) => {
-        assert.equal(row.url, weightedHighlights.WeightedHighlights.rows[i].url);
+        assert.equal(row.url, firstRunData.Highlights[i].url);
       });
+    });
+    it("should append First Run data if less or equal to MIN_HIGHLIGHTS_LENGTH", () => {
+      let weightedHighlights = {
+        WeightedHighlights: {rows: [{url: "http://foo.com"}, {url: "http://www.bar.com"}], init: true},
+        Prefs: {prefs: {weightedHighlights: true}}
+      };
+
+      state = selectNewTabSites(Object.assign({}, fakeState, weightedHighlights));
+      assert.equal(state.Spotlight.rows.length, 5);
+      assert.equal(state.Spotlight.rows[2].url, firstRunData.Highlights[0].url);
+    });
+    it("should dedupe weighted highlights results", () => {
+      let weightedHighlights = {
+        WeightedHighlights: {rows: [{url: "http://foo.com"}, {url: "http://www.foo.com"}], init: true},
+        Prefs: {prefs: {weightedHighlights: true}}
+      };
+
+      state = selectNewTabSites(Object.assign({}, fakeState, weightedHighlights));
+      assert.equal(state.Spotlight.rows.length, 1 + firstRunData.Highlights.length);
+    });
+  });
+  describe("selectWeightedHighlights", () => {
+    it("should call assignImageAndBackgroundColor", () => {
+      const state = selectWeightedHighlights({WeightedHighlights: {rows: [{background_color: "#fff"}]}});
+
+      assert.equal(state.rows[0].backgroundColor, "#fff");
+    });
+    it("should only change the rows property and copy others over", () => {
+      const state = selectWeightedHighlights({WeightedHighlights: {init: true, rows: []}});
+
+      assert.equal(state.init, true);
+    });
+  });
+  describe("selectAndDedupe", () => {
+    it("should dedupe items", () => {
+      const result = selectAndDedupe({
+        dedupe: ["http://www.mozilla.org"],
+        sites: ["http://www.mozilla.org"]
+      });
+
+      assert.equal(result.length, 0);
+    });
+    it("should slice the results based on `max` argument (defaults should not be added)", () => {
+      const max = 1;
+      const result = selectAndDedupe({
+        sites: ["http://www.mozilla.org", "http://www.firefox.com"],
+        dedupe: [],
+        max,
+        defaults: firstRunData.Highlights
+      });
+
+      assert.equal(result.length, max);
+    });
+    it("should append defaults if result length is under the specified limit", () => {
+      const result = selectAndDedupe({
+        sites: ["http://www.mozilla.org"],
+        dedupe: [],
+        max: 5,
+        defaults: firstRunData.Highlights
+      });
+
+      assert.equal(result.length, 1 + firstRunData.Highlights.length);
+    });
+    it("should slice the results based on `max` argument (combined with defaults)", () => {
+      const max = 3;
+      const result = selectAndDedupe({
+        sites: ["http://www.mozilla.org", "http://www.firefox.com"],
+        dedupe: [],
+        max,
+        defaults: firstRunData.Highlights
+      });
+
+      assert.equal(result.length, max);
     });
   });
 });

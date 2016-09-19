@@ -41,8 +41,17 @@ module.exports = {
     "values": {},
     "error": false
   },
+  "Filter": {"query": ""},
   "Prefs": {
     "prefs": {},
     "error": false
+  },
+  "ShareProviders": {
+    "providers": [
+      {
+        "name": "MySpace",
+        "origin": "https://myspace.com"
+      }
+    ]
   }
 };

@@ -106,6 +106,18 @@ ActivityFeedItem.propTypes = {
   parsedUrl: React.PropTypes.shape({hostname: React.PropTypes.string})
 };
 
+function filterSites(filter, sites) {
+  if (!filter) {
+    return sites;
+  }
+
+  // Do a case-insensitive matching of all search terms finding tokens somewhere
+  // in the title or url.
+  const tokens = filter.trim().toLowerCase().split(/\s+/);
+  return sites.filter(site => tokens.every(token =>
+    `${site.title || site.provider_display || ""} ${site.url}`.toLowerCase().search(token) !== -1));
+}
+
 function groupSitesBySession(sites) {
   const sessions = [[]];
   sites.forEach((site, i) => {
@@ -153,7 +165,8 @@ const GroupedActivityFeed = React.createClass({
         event: "CLICK",
         page: this.props.page,
         source: "ACTIVITY_FEED",
-        action_position: index
+        action_position: index,
+        metadata_source: this.props.sites[index].metadata_source
       }));
     };
   },
@@ -170,7 +183,7 @@ const GroupedActivityFeed = React.createClass({
   },
   render() {
     let maxPreviews = this.props.maxPreviews;
-    const sites = this.props.sites
+    const sites = filterSites(this.props.filter, this.props.sites)
       .slice(0, this.props.length)
       .map(site => Object.assign({}, site, {dateDisplay: site[this.props.dateKey]}));
     const groupedSites = groupSitesByDate(sites);
@@ -219,6 +232,7 @@ const GroupedActivityFeed = React.createClass({
 
 GroupedActivityFeed.propTypes = {
   sites: React.PropTypes.array.isRequired,
+  filter: React.PropTypes.string,
   length: React.PropTypes.number,
   dateKey: React.PropTypes.string,
   page: React.PropTypes.string,

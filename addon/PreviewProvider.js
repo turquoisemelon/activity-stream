@@ -7,6 +7,7 @@ const self = require("sdk/self");
 const {TippyTopProvider} = require("addon/TippyTopProvider");
 const {getColor} = require("addon/ColorAnalyzerProvider");
 const {MetadataCache} = require("addon/MetadataCache");
+const {absPerf} = require("common/AbsPerf");
 
 const ENABLED_PREF = "previews.enabled";
 const METADATA_SOURCE_PREF = "metadataSource";
@@ -182,13 +183,13 @@ PreviewProvider.prototype = {
   /**
     * Collects all the metadata about the set of links that are requested
     */
-  getLinkMetadata(links, event = {}, skipPreviewRequest = false, previewsOnly = false) {
+  getLinkMetadata(links, event = {}, skipPreviewRequest = false) {
     let processedLinks = this._processLinks(links);
     if (!skipPreviewRequest) {
       this._asyncSaveLinks(processedLinks, event);
     }
 
-    return this._asyncGetEnhancedLinks(processedLinks, previewsOnly, event).then(
+    return this._asyncGetEnhancedLinks(processedLinks, event).then(
       cachedLinks => this._getFaviconColors(cachedLinks));
   },
 
@@ -197,7 +198,7 @@ PreviewProvider.prototype = {
     * Also, collect some metrics on how many links were returned by PlacesProvider vs how
     * how many were returned by the cache
     */
-  _asyncGetEnhancedLinks: Task.async(function*(processedLinks, previewsOnly, event) {
+  _asyncGetEnhancedLinks: Task.async(function*(processedLinks, event) {
     this._tabTracker.handlePerformanceEvent(event, "previewCacheRequest", processedLinks.length);
     if (!this.enabled) {
       return processedLinks;
@@ -209,17 +210,18 @@ PreviewProvider.prototype = {
     dbLinks.forEach(item => existingLinks.set(item.cache_key, item));
     let results = processedLinks.map(site => {
       if (!site) {
-        return site;
+        return null;
+      }
+      let enhancedLink = Object.assign({}, site);
+      // Find the item in the map and return it if it exists
+      if (existingLinks.has(site.cache_key)) {
+        Object.assign(enhancedLink, existingLinks.get(site.cache_key));
       }
 
       // Add tippy top data, if available
-      let link = this._tippyTopProvider.processSite(site);
+      Object.assign(enhancedLink, this._tippyTopProvider.processSite(enhancedLink));
 
-      // Find the item in the map and return it if it exists
-      if (existingLinks.has(link.cache_key)) {
-        return Object.assign({}, existingLinks.get(link.cache_key), link);
-      }
-      return previewsOnly ? null : link;
+      return enhancedLink;
     }).filter(link => link);
 
     this._tabTracker.handlePerformanceEvent(event, "previewCacheHits", existingLinks.size);
@@ -313,9 +315,9 @@ PreviewProvider.prototype = {
     this._tabTracker.handlePerformanceEvent(event, "embedlyProxyRequestSentCount", newLinks.length);
     try {
       // Make network call when enabled and record how long the network call took
-      const startNetworkCall = Date.now();
+      const startNetworkCall = absPerf.now();
       let response = yield this._asyncGetLinkData(linkURLs);
-      const endNetworkCall = Date.now();
+      const endNetworkCall = absPerf.now();
       this._tabTracker.handlePerformanceEvent(event, "embedlyProxyRequestTime", endNetworkCall - startNetworkCall);
 
       if (response.ok) {

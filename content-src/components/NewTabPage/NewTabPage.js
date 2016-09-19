@@ -19,7 +19,6 @@ const NewTabPage = React.createClass({
   getInitialState() {
     return {
       showSettingsMenu: false,
-      renderedOnce: false,
       showRecommendations: true
     };
   },
@@ -36,12 +35,10 @@ const NewTabPage = React.createClass({
   componentDidMount() {
     document.title = "New Tab";
     setFavicon("newtab-icon.svg");
-  },
-  componentWillReceiveProps(nextProps) {
-    if (nextProps.isReady && !this.state.renderedOnce) {
-      this.props.dispatch(actions.NotifyPerf("NEWTAB_RENDER"));
-      this.setState({renderedOnce: true});
-    }
+
+    // Note that data may or may not be complete, depending on
+    // the state of the master store
+    this.props.dispatch(actions.NotifyPerf("NEWTAB_RENDER"));
   },
   render() {
     const props = this.props;

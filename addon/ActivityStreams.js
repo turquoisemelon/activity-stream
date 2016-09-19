@@ -28,6 +28,8 @@ const {CONTENT_TO_ADDON, ADDON_TO_CONTENT} = require("common/event-constants");
 const {ExperimentProvider} = require("addon/ExperimentProvider");
 const {Recommender} = require("common/recommender/Recommender");
 const {PrefsProvider} = require("addon/PrefsProvider");
+const createStore = require("common/create-store");
+const PageWorker = require("addon/PageWorker");
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource:///modules/NewTabURL.jsm");
@@ -70,6 +72,8 @@ function ActivityStreams(metadataStore, options = {}) {
   this.options = Object.assign({}, DEFAULT_OPTIONS, options);
   EventEmitter.decorate(this);
 
+  this._store = createStore();
+
   this._newTabURL = `${this.options.pageURL}#/`;
 
   this._perfMeter = new PerfMeter(this.appURLs);
@@ -88,6 +92,7 @@ function ActivityStreams(metadataStore, options = {}) {
     options.experiments,
     options.rng
   );
+  this._experimentProvider.init();
 
   this._tabTracker = new TabTracker(
     this.appURLs,
@@ -135,6 +140,10 @@ function ActivityStreams(metadataStore, options = {}) {
   if (simplePrefs.prefs.weightedHighlights) {
     this._loadRecommender();
   }
+
+  this._pageWorker = new PageWorker({store: this._store});
+  this._pageWorker.connect();
+  this._refreshAppState();
 }
 
 ActivityStreams.prototype = {
@@ -146,9 +155,12 @@ ActivityStreams.prototype = {
   /**
    * Send a message to a worker
    */
-  send(action, worker) {
+  send(action, worker, skipMasterStore) {
     // if the function is async, the worker might not be there yet, or might have already disappeared
     try {
+      if (!skipMasterStore) {
+        this._store.dispatch(action);
+      }
       worker.port.emit(ADDON_TO_CONTENT, action);
       this._perfMeter.log(worker.tab, action.type);
     } catch (err) {
@@ -164,6 +176,97 @@ ActivityStreams.prototype = {
     for (let worker of this.workers) {
       this.send(action, worker);
     }
+  },
+
+  /**
+   * Get from cache and dispatch to store
+   *
+   * @private
+   */
+  _processAndDispatchLinks(links, type) {
+    this._processLinks(links, type)
+      .then(result => {
+        const action = am.actions.Response(type, result);
+        this._store.dispatch(action);
+      });
+  },
+
+  /**
+   * Get from cache and response to content.
+   *
+   * @private
+   */
+  _processAndSendLinks(placesLinks, responseType, worker, options) {
+    const {append} = options || {};
+    // If the type is append, that is, the user is scrolling through pages,
+    // do not add these to the master store
+    const skipMasterStore = append;
+
+    const cachedLinks = this._processLinks(placesLinks, responseType, options);
+
+    cachedLinks.then(linksToSend => {
+      const action = am.actions.Response(responseType, linksToSend, {append});
+      this.send(action, worker, skipMasterStore);
+    });
+  },
+
+  /**
+   * _refreshAppState - This function replaces all messages that used to be requested on a page reload.
+   *                    instead, they dispatch actions on the master store directly.
+   *                    TODO: Refactor this in to a different functions that handle refreshing data separately
+   */
+  _refreshAppState() {
+    const provider = this._memoized;
+
+    // WeightedHighlights
+    if (this._baselineRecommender === null) {
+      this._store.dispatch(am.actions.Response("WEIGHTED_HIGHLIGHTS_RESPONSE", []));
+    } else {
+      provider.getRecentlyVisited().then(highlightsLinks => {
+        let cachedLinks = this._processLinks(highlightsLinks, "WEIGHTED_HIGHLIGHTS_RESPONSE");
+        cachedLinks.then(highlightsWithMeta => {
+          this._store.dispatch(am.actions.Response("WEIGHTED_HIGHLIGHTS_RESPONSE", this._baselineRecommender.scoreEntries(highlightsWithMeta)));
+        });
+      });
+    }
+
+    // Top Sites
+    provider.getTopFrecentSites().then(links => {
+      this._processAndDispatchLinks(links, "TOP_FRECENT_SITES_RESPONSE");
+    });
+
+    // Recent History
+    provider.getRecentLinks().then(links => {
+      this._processAndDispatchLinks(links, "RECENT_LINKS_RESPONSE");
+    });
+
+    // Highlights
+    provider.getHighlightsLinks().then(links => {
+      this._processAndDispatchLinks(links, "HIGHLIGHTS_LINKS_RESPONSE");
+    });
+
+    // Bookmarks
+    provider.getRecentBookmarks().then(links => {
+      this._processAndDispatchLinks(links, "RECENT_BOOKMARKS_RESPONSE");
+    });
+
+    // Search
+    SearchProvider.search.asyncGetCurrentState().then(state => {
+      let currentEngine = JSON.stringify(state.currentEngine);
+      state.currentEngine = currentEngine;
+      this._store.dispatch(am.actions.Response("SEARCH_STATE_RESPONSE", state));
+    });
+
+    const strings = SearchProvider.search.searchSuggestionUIStrings;
+    this._store.dispatch(am.actions.Response("SEARCH_UISTRINGS_RESPONSE", strings));
+
+    this._store.dispatch(am.actions.Response("EXPERIMENTS_RESPONSE", this._experimentProvider.data));
+
+    this._store.dispatch(am.actions.Response("PREFS_RESPONSE", simplePrefs.prefs));
+
+    // Share
+    // Note: there is a race condition here, which should be resolved in https://github.com/mozilla/activity-stream/issues/1314
+    this._store.dispatch(am.actions.Response("SHARE_PROVIDERS_RESPONSE", this._shareProvider.socialProviders || []));
   },
 
   _respondOpenWindow({msg}) {
@@ -211,47 +314,15 @@ ActivityStreams.prototype = {
    * Responds to places requests
    */
   _respondToPlacesRequests({msg, worker}) {
-    let provider = this._memoized;
-    if (msg.data && (msg.data.afterDate || msg.data.beforeDate)) {
-      // Only use the Memoizer cache for the default first page of data.
-      provider = PlacesProvider.links;
-    }
     switch (msg.type) {
-      case am.type("WEIGHTED_HIGHLIGHTS_REQUEST"):
-        // Empty response in case the recommender is not instantiated, no need for the extra requests.
-        if (this._baselineRecommender === null) {
-          this.send(am.actions.Response("WEIGHTED_HIGHLIGHTS_RESPONSE", [], {append: msg.meta.append}), worker);
-          break;
-        }
-
-        provider.getHighlightsLinks(msg.data).then(highlightsLinks => {
-          // Decorate links with meta information.
-          let cachedLinks = this._processLinks(highlightsLinks, "WEIGHTED_HIGHLIGHTS_RESPONSE", msg.meta);
-          cachedLinks.then(highlightsWithMeta => {
-            this.send(am.actions.Response("WEIGHTED_HIGHLIGHTS_RESPONSE",
-                                          this._baselineRecommender.scoreEntries(highlightsWithMeta),
-                                          {append: msg.meta.append}), worker);
-          });
-        });
-        break;
-      case am.type("TOP_FRECENT_SITES_REQUEST"):
-        provider.getTopFrecentSites(msg.data).then(links => {
-          this._processAndSendLinks(links, "TOP_FRECENT_SITES_RESPONSE", worker, msg.meta);
-        });
-        break;
       case am.type("RECENT_BOOKMARKS_REQUEST"):
-        provider.getRecentBookmarks(msg.data).then(links => {
+        PlacesProvider.links.getRecentBookmarks(msg.data).then(links => {
           this._processAndSendLinks(links, "RECENT_BOOKMARKS_RESPONSE", worker, msg.meta);
         });
         break;
       case am.type("RECENT_LINKS_REQUEST"):
-        provider.getRecentLinks(msg.data).then(links => {
+        PlacesProvider.links.getRecentLinks(msg.data).then(links => {
           this._processAndSendLinks(links, "RECENT_LINKS_RESPONSE", worker, msg.meta);
-        });
-        break;
-      case am.type("HIGHLIGHTS_LINKS_REQUEST"):
-        provider.getHighlightsLinks(msg.data).then(links => {
-          this._processAndSendLinks(links, "HIGHLIGHTS_LINKS_RESPONSE", worker, msg.meta);
         });
         break;
       case am.type("NOTIFY_BOOKMARK_ADD"):
@@ -279,31 +350,19 @@ ActivityStreams.prototype = {
   },
 
   /**
-   * Get from cache and response to content.
-   *
-   * @private
-   */
-  _processAndSendLinks(placesLinks, responseType, worker, options) {
-    let {append} = options || {};
-    let cachedLinks = this._processLinks(placesLinks, responseType, options);
-
-    cachedLinks.then(linksToSend => this.send(am.actions.Response(responseType, linksToSend, {append}), worker));
-  },
-
-  /**
    * Process the passed in links, save them.
    *
    * @private
    */
   _processLinks(placesLinks, responseType, options) {
-    let {previewsOnly, skipPreviewRequest} = options || {};
+    let {skipPreviewRequest} = options || {};
     const event = this._tabTracker.generateEvent({source: responseType});
     let inExperiment = this._experimentProvider.data.recommendedHighlight;
     let isAHighlight = responseType === "HIGHLIGHTS_LINKS_RESPONSE";
     let shouldGetRecommendation = isAHighlight && simplePrefs.prefs.recommendations && inExperiment;
     let recommendation = shouldGetRecommendation ? this._recommendationProvider.getRecommendation() : null;
     let linksToProcess = placesLinks.concat([recommendation]).filter(link => link);
-    return this._previewProvider.getLinkMetadata(linksToProcess, event, skipPreviewRequest, previewsOnly);
+    return this._previewProvider.getLinkMetadata(linksToProcess, event, skipPreviewRequest);
   },
 
   /**
@@ -314,27 +373,15 @@ ActivityStreams.prototype = {
     const gBrowser = win.getBrowser();
     const browser = gBrowser.selectedBrowser;
     switch (msg.type) {
-      case am.type("SEARCH_STATE_REQUEST"):
-        SearchProvider.search.asyncGetCurrentState().then(state => {
-          let currentEngine = JSON.stringify(state.currentEngine);
-          state.currentEngine = currentEngine;
-          this.send(am.actions.Response("SEARCH_STATE_RESPONSE", state), worker);
-        });
-        break;
       case am.type("NOTIFY_PERFORM_SEARCH"):
         SearchProvider.search.asyncPerformSearch(browser, msg.data);
         break;
-      case am.type("SEARCH_UISTRINGS_REQUEST"): {
-        const strings = SearchProvider.search.searchSuggestionUIStrings;
-        this.send(am.actions.Response("SEARCH_UISTRINGS_RESPONSE", strings), worker);
-        break;
-      }
       case am.type("SEARCH_SUGGESTIONS_REQUEST"):
         Task.spawn(function*() {
           try {
             const suggestions = yield SearchProvider.search.asyncGetSuggestions(browser, msg.data);
             if (suggestions) {
-              this.send(am.actions.Response("SEARCH_SUGGESTIONS_RESPONSE", suggestions), worker);
+              this.send(am.actions.Response("SEARCH_SUGGESTIONS_RESPONSE", suggestions), worker, true);
             }
           } catch (e) {
             Cu.reportError(e);
@@ -355,6 +402,24 @@ ActivityStreams.prototype = {
         this.send(am.actions.Response("SEARCH_CYCLE_CURRENT_ENGINE_RESPONSE", {currentEngine: engine}), worker);
         break;
       }
+    }
+  },
+
+  /**
+   * Responds to share requests
+   */
+  _respondToShareRequests({msg, worker}) {
+    const win = windowMediator.getMostRecentWindow("navigator:browser");
+    switch (msg.type) {
+      case am.type("NOTIFY_SHARE_URL"):
+        this._shareProvider.shareLink(msg.data.provider, {url: msg.data.url, title: msg.data.title}, null, win);
+        break;
+      case am.type("NOTIFY_COPY_URL"):
+        this._shareProvider.copyLink(msg.data.url);
+        break;
+      case am.type("NOTIFY_EMAIL_URL"):
+        this._shareProvider.emailLink(msg.data.url, msg.data.title, win);
+        break;
     }
   },
 
@@ -409,7 +474,6 @@ ActivityStreams.prototype = {
     if (msg) {
       this._tabTracker.handleRouteChange(tabs.activeTab, msg.data);
     }
-    this._appURLHider.maybeHideURL(tabs.activeTab);
   },
 
   _respondToUIChanges(args) {
@@ -448,9 +512,17 @@ ActivityStreams.prototype = {
       // Log requests first so that the requests are logged before responses
       // in synchronous response cases.
       this._logPerfMeter(args);
+
+      // Dispatch to store, to synchronize it
+      if (!args.msg.meta || !args.msg.meta.skipMasterStore) {
+        this._store.dispatch(args.msg);
+      }
+
+      // Other handlers
       this._respondToUIChanges(args);
       this._respondToPlacesRequests(args);
       this._respondToSearchRequests(args);
+      this._respondToShareRequests(args);
       this._respondOpenWindow(args);
       this._prefsProvider.actionHandler(args);
     };
@@ -497,6 +569,7 @@ ActivityStreams.prototype = {
       getAllHistoryItems: cache.memoize("getAllHistoryItems", PlacesProvider.links.getAllHistoryItems.bind(linksObj)),
       getRecentBookmarks: cache.memoize("getRecentBookmarks", PlacesProvider.links.getRecentBookmarks.bind(linksObj)),
       getRecentLinks: cache.memoize("getRecentLinks", PlacesProvider.links.getRecentLinks.bind(linksObj)),
+      getRecentlyVisited: cache.memoize("getRecentlyVisited", PlacesProvider.links.getRecentlyVisited.bind(linksObj)),
       getHighlightsLinks: cache.memoize("getHighlightsLinks", PlacesProvider.links.getHighlightsLinks.bind(linksObj)),
       getHistorySize: cache.memoize("getHistorySize", PlacesProvider.links.getHistorySize.bind(linksObj)),
       getBookmarksSize: cache.memoize("getBookmarksSize", PlacesProvider.links.getBookmarksSize.bind(linksObj))
@@ -518,6 +591,7 @@ ActivityStreams.prototype = {
           this._memoized.getRecentBookmarks(opt),
           this._memoized.getAllHistoryItems(opt),
           this._memoized.getRecentLinks(opt),
+          this._memoized.getRecentlyVisited(opt),
           this._memoized.getHighlightsLinks(opt),
           this._memoized.getHistorySize(opt),
           this._memoized.getBookmarksSize(opt)
@@ -565,6 +639,8 @@ ActivityStreams.prototype = {
       contentScriptWhen: "start",
       attachTo: ["existing", "top"],
       onAttach: worker => {
+        this._refreshAppState();
+
         // Don't attach when in private browsing. Send user to about:privatebrowsing
         if (privateBrowsing.isPrivate(worker)) {
           worker.tab.url = "about:privatebrowsing";
@@ -704,6 +780,7 @@ ActivityStreams.prototype = {
       this._populatingCache = {places: false};
       this._prefsProvider.destroy();
       this._shareProvider.uninit(reason);
+      this._experimentProvider.destroy();
     };
 
     switch (reason) {

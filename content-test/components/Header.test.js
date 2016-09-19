@@ -1,31 +1,31 @@
 /* globals describe, beforeEach, afterEach, it */
-const Header = require("components/Header/Header");
+const ConnectedHeader = require("components/Header/Header");
+const {Header} = ConnectedHeader;
 const React = require("react");
 const ReactDOM = require("react-dom");
 const TestUtils = require("react-addons-test-utils");
-const {overrideConsoleError} = require("test/test-utils");
+const {overrideConsoleError, renderWithProvider} = require("test/test-utils");
 const fakeProps = {
   title: "Home",
   pathname: "/"
 };
 
 describe("Header", () => {
-  let node;
   let header;
   let el;
-  beforeEach(() => {
-    node = document.createElement("div");
-    header = ReactDOM.render(<Header {...fakeProps} />, node);
+  function setup(customProps = {}) {
+    const props = Object.assign({}, fakeProps, customProps);
+    const connected = renderWithProvider(<ConnectedHeader {...props} />);
+    header = TestUtils.findRenderedComponentWithType(connected, Header);
     el = ReactDOM.findDOMNode(header);
-  });
-  afterEach(() => {
-    ReactDOM.unmountComponentAtNode(node);
-  });
+  }
+
+  beforeEach(setup);
 
   it("should not throw if missing props", () => {
     assert.doesNotThrow(() => {
       const restore = overrideConsoleError();
-      ReactDOM.render(<Header />, node);
+      renderWithProvider(<ConnectedHeader />);
       restore();
     });
   });
@@ -45,14 +45,60 @@ describe("Header", () => {
   });
 
   it("should not show caret/arrow if props.disabled is true", () => {
-    header = ReactDOM.render(<Header {...fakeProps} disabled={true} />, node);
+    header = renderWithProvider(<Header {...fakeProps} disabled={true} />);
     assert.isTrue(header.refs.caret.hidden);
   });
 
   it("should not set showDropdown on click if props.disabled", () => {
-    header = ReactDOM.render(<Header {...fakeProps} disabled={true} />, node);
+    header = renderWithProvider(<Header {...fakeProps} disabled={true} />);
     TestUtils.Simulate.click(header.refs.clickElement);
     assert.isFalse(header.state.showDropdown);
+  });
+
+  it("should send search query event on filter change", done => {
+    const props = Object.assign({}, fakeProps, {
+      dispatch(action) {
+        assert.equal(action.type, "NOTIFY_FILTER_QUERY");
+        assert.equal(action.data, "hello");
+        done();
+      }
+    });
+    const instance = TestUtils.renderIntoDocument(<Header {...props} />);
+    let el = instance.refs.filter;
+    el.value = "hello";
+    TestUtils.Simulate.change(el);
+  });
+
+  it("should update state on filter change", () => {
+    assert.equal(header.state.filterQuery, "");
+
+    let el = header.refs.filter;
+    el.value = "hello";
+    TestUtils.Simulate.change(el);
+
+    assert.equal(header.state.filterQuery, "hello");
+  });
+
+  it("should not have a filter dismiss by default", () => {
+    assert.isUndefined(header.refs.filterDismiss);
+  });
+
+  it("should have a filter dismiss on filter change", () => {
+    let el = header.refs.filter;
+    el.value = "hello";
+    TestUtils.Simulate.change(el);
+
+    assert.ok(header.refs.filterDismiss);
+  });
+
+  it("should clear search on dismiss", () => {
+    let el = header.refs.filter;
+    el.value = "hello";
+    TestUtils.Simulate.change(el);
+    TestUtils.Simulate.click(header.refs.filterDismiss);
+
+    assert.isUndefined(header.refs.filterDismiss);
+    assert.equal(header.state.filterQuery, "");
   });
 
   describe("userImage", () => {
@@ -61,7 +107,9 @@ describe("Header", () => {
     });
 
     it("should have an img element if a user image is provided ", () => {
-      ReactDOM.render(<Header {...fakeProps} userImage="https://foo.com/user.jpg" />, node);
+      const connected = renderWithProvider(<Header {...fakeProps} userImage="https://foo.com/user.jpg" />);
+      header = TestUtils.findRenderedComponentWithType(connected, Header);
+      el = ReactDOM.findDOMNode(header);
       const imgEl = el.querySelector(".user-info img");
       assert.ok(imgEl);
       assert.include(imgEl.src, "https://foo.com/user.jpg");

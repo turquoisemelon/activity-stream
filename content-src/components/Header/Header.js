@@ -1,4 +1,7 @@
 const React = require("react");
+const {connect} = require("react-redux");
+const {actions} = require("common/action-manager");
+const {justDispatch} = require("selectors/selectors");
 const {Link} = require("react-router");
 const classNames = require("classnames");
 
@@ -10,7 +13,10 @@ const Header = React.createClass({
     };
   },
   getInitialState() {
-    return {showDropdown: false};
+    return {
+      filterQuery: "",
+      showDropdown: false
+    };
   },
   onClick() {
     if (this.props.disabled) {
@@ -18,8 +24,12 @@ const Header = React.createClass({
     }
     this.setState({showDropdown: !this.state.showDropdown});
   },
+  updateFilter(query) {
+    this.setState({filterQuery: query});
+    this.props.dispatch(actions.NotifyFilterQuery(query));
+  },
   render() {
-    const props = this.props;
+    const {props, state} = this;
     return (<header className="head">
 
       <section ref="clickElement" className={classNames("nav", {"disabled": props.disabled})} onClick={this.onClick}>
@@ -28,11 +38,22 @@ const Header = React.createClass({
           <span>{props.title}</span>
           <span ref="caret" hidden={props.disabled} className="arrow" />
         </h1>
-        <ul ref="dropdown" className="nav-picker" hidden={!this.state.showDropdown}>
+        <ul ref="dropdown" className="nav-picker" hidden={!state.showDropdown}>
           {props.links.map(link => <li key={link.to}><Link to={link.to}>{link.title}</Link></li>)}
         </ul>
       </section>
-      <section className="spacer" />
+      <section className="filter">
+        <input
+          onChange={e => this.updateFilter(e.target.value)}
+          placeholder="Search your Activity Stream"
+          ref="filter"
+          type="search"
+          value={state.filterQuery} />
+        {state.filterQuery && <span
+          className="icon icon-dismiss"
+          onClick={() => this.updateFilter("")}
+          ref="filterDismiss" />}
+      </section>
       <section className="user-info">
         {props.userName && <span>
           {props.userName}
@@ -54,4 +75,5 @@ Header.propTypes = {
   disabled: React.PropTypes.bool
 };
 
-module.exports = Header;
+module.exports = connect(justDispatch)(Header);
+module.exports.Header = Header;
