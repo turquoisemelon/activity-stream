@@ -11,6 +11,8 @@ const {absPerf} = require("common/AbsPerf");
 
 const ENABLED_PREF = "previews.enabled";
 const METADATA_SOURCE_PREF = "metadataSource";
+const EMBEDLY_SOURCE_NAME = "Embedly";
+const METADATA_SERVICE_SOURCE_NAME = "MetadataService";
 const VERSION_SUFFIX = `?addon_version=${self.version}`;
 const ALLOWED_PREFS = new Set([ENABLED_PREF]);
 
@@ -34,12 +36,13 @@ const DEFAULT_OPTIONS = {
   initFresh: false
 };
 
-function PreviewProvider(tabTracker, metadataStore, options = {}) {
+function PreviewProvider(tabTracker, metadataStore, experimentProvider, options = {}) {
   this.options = Object.assign({}, DEFAULT_OPTIONS, options);
   this._onPrefChange = this._onPrefChange.bind(this);
   this._tippyTopProvider = new TippyTopProvider();
   this._tabTracker = tabTracker;
   this._metadataStore = metadataStore;
+  this._experimentProvider = experimentProvider;
   this.init();
 }
 
@@ -57,14 +60,14 @@ PreviewProvider.prototype = {
 
   /**
     * Gets the current metadata source name based on the
-    * pref, and falls back to Embedly if it doesn't exist
+    * pref or the experiment, and falls back to Embedly if it doesn't exist
     */
   _getMetadataSourceName() {
     let source = simplePrefs.prefs[METADATA_SOURCE_PREF];
     if (!this._metadataEndpoints.has(source)) {
       // set it to a default if the current endpoint was poorly set by the user
       // defensive programming ftw
-      return "Embedly";
+      source = EMBEDLY_SOURCE_NAME;
     }
     return source;
   },
@@ -172,7 +175,7 @@ PreviewProvider.prototype = {
           resolve(link);
           return;
         }
-        getColor(link.favicon).then(color => {
+        getColor(link.favicon, link.url).then(color => {
           resolve(Object.assign({}, link, {favicon_color: color}));
         }, () => resolve(link));
       })
@@ -325,14 +328,9 @@ PreviewProvider.prototype = {
         this._tabTracker.handlePerformanceEvent(event, "embedlyProxyRequestReceivedCount", responseJson.urls.length);
         this._tabTracker.handlePerformanceEvent(event, "embedlyProxyRequestSucess", 1);
         let linksToInsert = newLinks.filter(link => responseJson.urls[link.sanitized_url])
-          .map(link => Object.assign({}, link, responseJson.urls[link.sanitized_url], {
-            expired_at: (this.options.metadataTTL) + Date.now(),
-            metadata_source: this._getMetadataSourceName()
-          }));
-        this._metadataStore.asyncInsert(linksToInsert);
-        linksToInsert.forEach(link => {
-          MetadataCache.cache.add(link.cache_key, link);
-        });
+          .map(link => Object.assign({}, link, responseJson.urls[link.sanitized_url]));
+
+        this.insertMetadata(linksToInsert, this._getMetadataSourceName());
       } else {
         this._tabTracker.handlePerformanceEvent(event, "embedlyProxyFailure", 1);
       }
@@ -346,15 +344,63 @@ PreviewProvider.prototype = {
   }),
 
   /**
+   * Do some post-processing on the links before inserting them into the metadata
+   * DB and adding them to the metadata cache
+   */
+  insertMetadata(links, metadataSource) {
+    const linksToInsert = links.map(link => Object.assign({}, link, {
+      expired_at: (this.options.metadataTTL) + Date.now(),
+      metadata_source: metadataSource
+    }));
+    this._metadataStore.asyncInsert(linksToInsert);
+    linksToInsert.forEach(link => {
+      MetadataCache.cache.add(link.cache_key, link);
+    });
+  },
+
+  /**
+   * Do some pre-processing on the link before inserting it into the metadata
+   * DB and adding them to the metadata cache
+   */
+  processAndInsertMetadata(link, metadataSource) {
+    const processedLink = this._processLinks([link]);
+    this.insertMetadata(processedLink, metadataSource);
+  },
+
+  /**
+   * Check if a single link exists in the metadata DB
+   */
+  asyncLinkExist: Task.async(function*(url) {
+    let key = this._createCacheKey(url);
+    if (!key) {
+      return false;
+    }
+
+    // Hit the cache first and return true immediately if we have a hit
+    const metadataFromCache = MetadataCache.cache.get(key);
+    if (metadataFromCache) {
+      return true;
+    }
+
+    const linkExists = yield this._metadataStore.asyncCacheKeyExists(key);
+    return linkExists;
+  }),
+
+  /**
    * Initialize Preview Provider
    */
   init() {
     this._alreadyRequested = new Set();
     this._metadataEndpoints = new Map();
-    this._metadataEndpoints.set("MetadataService", simplePrefs.prefs["metadata.endpoint"]);
-    this._metadataEndpoints.set("Embedly", simplePrefs.prefs["embedly.endpoint"]);
+    this._metadataEndpoints.set(METADATA_SERVICE_SOURCE_NAME, simplePrefs.prefs["metadata.endpoint"]);
+    this._metadataEndpoints.set(EMBEDLY_SOURCE_NAME, simplePrefs.prefs["embedly.endpoint"]);
     this.enabled = simplePrefs.prefs[ENABLED_PREF];
     simplePrefs.on("", this._onPrefChange);
+
+    // if we are in the experiment change the metadata source
+    if (this._experimentProvider.data.metadataService) {
+      simplePrefs.prefs[METADATA_SOURCE_PREF] = METADATA_SERVICE_SOURCE_NAME;
+    }
   },
 
   /**

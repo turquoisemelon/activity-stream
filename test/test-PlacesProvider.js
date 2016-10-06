@@ -64,6 +64,25 @@ exports.test_Links_getTopFrecentSites = function*(assert) {
   links = yield provider.getTopFrecentSites();
   assert.equal(links.length, 1, "adding a visit yields a link");
   assert.equal(links[0].url, testURI.spec, "added visit corresponds to added url");
+  assert.equal(links[0].eTLD, "com", "added visit mozilla.com has 'com' eTLD");
+};
+
+exports.test_Links_getTopFrecentSites_dedupeWWW = function*(assert) {
+  let provider = PlacesProvider.links;
+
+  let links = yield provider.getTopFrecentSites();
+  assert.equal(links.length, 0, "empty history yields empty links");
+
+  // add a visit without www
+  let testURI = NetUtil.newURI("http://mozilla.com");
+  yield PlacesTestUtils.addVisits(testURI);
+
+  // add a visit with www
+  testURI = NetUtil.newURI("http://www.mozilla.com");
+  yield PlacesTestUtils.addVisits(testURI);
+
+  links = yield provider.getTopFrecentSites();
+  assert.equal(links.length, 1, "adding both www. and no-www. yields one link");
 };
 
 exports.test_Links_getTopFrecentSites_Order = function*(assert) {
@@ -244,11 +263,25 @@ exports.test_Links_getRecentLinks = function*(assert) {
   assert.equal(links[0].url, "https://mozilla3.com/2", "Expected 1-st link");
   assert.equal(links[1].url, "https://mozilla4.com/3", "Expected 2-nd link");
 
-  // test beforeDate functionality
+  // test afterDate functionality
   links = yield provider.getRecentLinks({afterDate: theDate});
   assert.equal(links.length, 2, "should only see two links inserted after the date");
   assert.equal(links[0].url, "https://mozilla2.com/1", "Expected 1-st link");
   assert.equal(links[1].url, "https://mozilla1.com/0", "Expected 2-nd link");
+
+  // test filter functionality
+  links = yield provider.getRecentLinks({filter: ""});
+  assert.equal(links.length, 4, "should match all links");
+  assert.equal(links[0].filter, "", "should include filter");
+  links = yield provider.getRecentLinks({filter: "a"});
+  assert.equal(links.length, 4, "should match all links");
+  assert.equal(links[0].filter, "a", "should include filter");
+  links = yield provider.getRecentLinks({filter: "a1"});
+  assert.equal(links.length, 1, "should match just mozilla1");
+  assert.equal(links[0].filter, "a1", "should include filter");
+  links = yield provider.getRecentLinks({filter: "a 1"});
+  assert.equal(links.length, 2, "should match mozilla1 and /1");
+  assert.equal(links[0].filter, "a 1", "should include filter");
 };
 
 exports.test_Links_getFrecentLinks = function*(assert) {

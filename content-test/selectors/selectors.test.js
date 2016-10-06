@@ -11,7 +11,8 @@ const {
   selectHistory,
   selectWeightedHighlights,
   selectAndDedupe,
-  SPOTLIGHT_LENGTH
+  SPOTLIGHT_LENGTH,
+  TOP_HIGHLIGHTS_LENGTH
 } = require("selectors/selectors");
 const {rawMockData, createMockProvider} = require("test/test-utils");
 
@@ -177,16 +178,45 @@ describe("selectors", () => {
     });
   });
   describe("selectHistory weightedHighlights pref is true", () => {
+    let fakeStateWithWeights;
     let state;
-    let fakeStateWithWeights = Object.assign({}, fakeState, {Prefs: {prefs: {weightedHighlights: true}}});
     beforeEach(() => {
+      fakeStateWithWeights = Object.assign({}, fakeState, {Experiments: {values: {weightedHighlights: true}}});
       state = selectHistory(fakeStateWithWeights);
+    });
+    it("should select the correct number of items", () => {
+      assert.equal(state.Spotlight.rows.length, TOP_HIGHLIGHTS_LENGTH);
     });
     it("should select WeightedHighlights when weightedHighlights pref is true", () => {
       // Because of the call to assignImageAndBackgroundColor the two `rows` prop are not identical.
       state.Spotlight.rows.forEach((row, i) => {
         assert.equal(row.url, fakeStateWithWeights.WeightedHighlights.rows[i].url);
       });
+    });
+  });
+  describe("selectHistory keep less filtered rows", () => {
+    const rows = [
+      {filter: ""},
+      {filter: "a"},
+      {filter: "ab"}
+    ];
+    function doSelect(query) {
+      return selectHistory(Object.assign({}, fakeState, {
+        Filter: {query},
+        History: {rows}
+      }));
+    }
+    it("should keep only unfiltered for empty", () => {
+      let state = doSelect("");
+      assert.lengthOf(state.History.rows, 1);
+    });
+    it("should keep only unfiltered and partially filtered for partial filter", () => {
+      let state = doSelect("a");
+      assert.lengthOf(state.History.rows, 2);
+    });
+    it("should keep all filtered for full filter", () => {
+      let state = doSelect("ab");
+      assert.lengthOf(state.History.rows, 3);
     });
   });
   describe("selectNewTabSites", () => {
@@ -230,7 +260,7 @@ describe("selectors", () => {
           rows: [{url: "http://foo1.com"}, {url: "http://www.foo2.com"}, {url: "http://www.foo3.com"},
             {url: "http://foo4.com"}, {url: "http://www.foo5.com"}, {url: "http://www.foo6.com"}]
         },
-        Prefs: {prefs: {weightedHighlights: true}}
+        Experiments: {values: {weightedHighlights: true}}
       };
 
       state = selectNewTabSites(Object.assign({}, fakeState, weightedHighlights));
@@ -244,7 +274,7 @@ describe("selectors", () => {
     it("should render first run highlights of fresh profiles", () => {
       let weightedHighlights = {
         WeightedHighlights: {rows: [], init: true},
-        Prefs: {prefs: {weightedHighlights: true}}
+        Experiments: {values: {weightedHighlights: true}}
       };
 
       state = selectNewTabSites(Object.assign({}, fakeState, weightedHighlights));
@@ -256,7 +286,7 @@ describe("selectors", () => {
     it("should append First Run data if less or equal to MIN_HIGHLIGHTS_LENGTH", () => {
       let weightedHighlights = {
         WeightedHighlights: {rows: [{url: "http://foo.com"}, {url: "http://www.bar.com"}], init: true},
-        Prefs: {prefs: {weightedHighlights: true}}
+        Experiments: {values: {weightedHighlights: true}}
       };
 
       state = selectNewTabSites(Object.assign({}, fakeState, weightedHighlights));
@@ -266,7 +296,7 @@ describe("selectors", () => {
     it("should dedupe weighted highlights results", () => {
       let weightedHighlights = {
         WeightedHighlights: {rows: [{url: "http://foo.com"}, {url: "http://www.foo.com"}], init: true},
-        Prefs: {prefs: {weightedHighlights: true}}
+        Experiments: {values: {weightedHighlights: true}}
       };
 
       state = selectNewTabSites(Object.assign({}, fakeState, weightedHighlights));

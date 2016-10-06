@@ -335,7 +335,7 @@ Links.prototype = {
    * @returns {Promise} Returns a promise with the array of links as payload.
    */
   _getHistoryLinks: Task.async(function*(options = {}) {
-    let {limit, afterDate, beforeDate, order, ignoreBlocked} = options;
+    let {limit, afterDate, beforeDate, filter, order, ignoreBlocked} = options;
     if (!limit || limit.options > LINKS_QUERY_LIMIT) {
       limit = LINKS_QUERY_LIMIT;
     }
@@ -357,6 +357,22 @@ Links.prototype = {
     if (beforeDate) {
       beforeDateClause = "AND moz_places.last_visit_date < :beforeDate * 1000";
       params.beforeDate = beforeDate;
+    }
+
+    // setup filter binding and sql clause
+    let filterClause = "";
+    if (filter) {
+      // Match each token in either the title or url
+      let tokens = filter.trim().toLowerCase().split(/\s+/);
+      tokens.forEach((token, i) => {
+        filterClause = `${filterClause} AND (
+                          moz_places.title LIKE :filter${i} OR
+                          moz_places.url LIKE :filter${i})`;
+        params[`filter${i}`] = `%${token}%`;
+      });
+    }
+    else {
+      filter = "";
     }
 
     // setup order by clause
@@ -384,6 +400,7 @@ Links.prototype = {
                      AND moz_places.url NOT IN (${blockedURLs})
                      ${afterDateClause}
                      ${beforeDateClause}
+                     ${filterClause}
                      ${orderbyClause}
                      LIMIT :limit`;
 
@@ -392,6 +409,9 @@ Links.prototype = {
                 "frecency", "type", "bookmarkGuid", "bookmarkDateCreated"],
       params
     });
+
+    // Remember how these results were filtered
+    links = links.map(link => Object.assign(link, {filter}));
 
     links = this._faviconBytesToDataURI(links);
     return links.filter(link => LinkChecker.checkLoadURI(link.url));
@@ -439,7 +459,7 @@ Links.prototype = {
 
     let blockedURLs = ignoreBlocked ? [] : this.blockedURLs.items().map(item => `"${item}"`);
 
-    // this query does "GROUP BY rev_host" to remove urls from same domain.
+    // this query does "GROUP BY rev_nowww" (rev_host without www) to remove urls from same domain.
     // Note that unlike mysql, sqlite picks the last raw from groupby bucket.
     // Which is why subselect orders frecency and last_visit_date backwards.
     // In general the groupby behavior in the absence of aggregates is not
@@ -450,7 +470,19 @@ Links.prototype = {
                           "history" as type
                     FROM
                     (
-                      SELECT rev_host, moz_places.url, moz_favicons.data as favicon, mime_type as mimeType, moz_places.title, frecency, last_visit_date, moz_places.guid as guid, moz_bookmarks.guid as bookmarkGuid
+                      SELECT
+                        CASE SUBSTR(rev_host, -5)
+                          WHEN ".www." THEN SUBSTR(rev_host, -4, -999)
+                          ELSE rev_host
+                        END AS rev_nowww,
+                        moz_places.url,
+                        moz_favicons.data AS favicon,
+                        mime_type AS mimeType,
+                        moz_places.title,
+                        frecency,
+                        last_visit_date,
+                        moz_places.guid AS guid,
+                        moz_bookmarks.guid AS bookmarkGuid
                       FROM moz_places
                       LEFT JOIN moz_favicons
                       ON favicon_id = moz_favicons.id
@@ -460,7 +492,7 @@ Links.prototype = {
                       AND moz_places.url NOT IN (${blockedURLs})
                       ORDER BY rev_host, frecency, last_visit_date, moz_places.url DESC
                     )
-                    GROUP BY rev_host
+                    GROUP BY rev_nowww
                     ORDER BY frecency DESC, lastVisitDate DESC, url
                     LIMIT :limit`;
 
@@ -470,6 +502,14 @@ Links.prototype = {
     });
 
     links = this._faviconBytesToDataURI(links);
+    links = links.map(link => {
+      try {
+        link.eTLD = Services.eTLD.getPublicSuffix(Services.io.newURI(link.url, null, null));
+      } catch (e) {
+        link.eTLD = "";
+      }
+      return link;
+    });
     return links.filter(link => LinkChecker.checkLoadURI(link.url));
   }),
 

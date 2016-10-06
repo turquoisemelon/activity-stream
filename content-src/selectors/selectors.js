@@ -5,7 +5,7 @@ const {assignImageAndBackgroundColor} = require("selectors/colorSelectors");
 
 const SPOTLIGHT_LENGTH = module.exports.SPOTLIGHT_LENGTH = 3;
 const TOP_SITES_LENGTH = module.exports.TOP_SITES_LENGTH = 6;
-const TOP_HIGHLIGHTS_LENGTH = SPOTLIGHT_LENGTH;
+const TOP_HIGHLIGHTS_LENGTH = module.exports.TOP_HIGHLIGHTS_LENGTH = SPOTLIGHT_LENGTH;
 const BOTTOM_HIGHLIGHTS_LENGTH = module.exports.BOTTOM_HIGHLIGHTS_LENGTH = 12;
 
 module.exports.justDispatch = (() => ({}));
@@ -51,7 +51,7 @@ const selectSpotlight = module.exports.selectSpotlight = createSelector(
     state => state.Prefs.prefs.recommendations,
     state => state.Prefs.prefs.metadataRatingSystem,
     selectWeightedHighlights,
-    state => state.Prefs.prefs.weightedHighlights
+    state => state.Experiments.values.weightedHighlights
   ],
   (Highlights, recommendationShown, metadataRating, WeightedHighlights, prefWeightedHighlights) => {
     let rows;
@@ -95,7 +95,7 @@ const selectTopSites = module.exports.selectTopSites = createSelector(
 module.exports.selectNewTabSites = createSelector(
   [
     selectWeightedHighlights,
-    state => state.Prefs.prefs.weightedHighlights,
+    state => state.Experiments.values.weightedHighlights,
     selectTopSites,
     state => state.History,
     selectSpotlight,
@@ -146,7 +146,7 @@ module.exports.selectHistory = createSelector(
     state => state.Filter,
     state => state.History,
     selectWeightedHighlights,
-    state => state.Prefs.prefs.weightedHighlights
+    state => state.Experiments.values.weightedHighlights
   ],
   (Spotlight, Filter, History, WeightedHighlights, prefWeightedHighlights) => {
     let rows;
@@ -164,7 +164,10 @@ module.exports.selectHistory = createSelector(
     return {
       Spotlight: Object.assign({}, Spotlight, {rows}),
       Filter,
-      History
+      History: Object.assign({}, History, {
+        // Only include rows that are less filtered than the current filter
+        rows: History.rows.filter(val => Filter.query.indexOf(val.filter) === 0)
+      })
     };
   }
 );

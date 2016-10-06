@@ -1,7 +1,9 @@
 /* globals XPCOMUtils, Services, Task */
 "use strict";
 
-const {Cu} = require("chrome");
+const {Ci, Cu} = require("chrome");
+const prefs = require("sdk/preferences/service");
+const self = require("sdk/self");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 
@@ -207,9 +209,20 @@ Benchmark.prototype = {
   /*
    * Runs the benchmark for a given times with timer
    *
+   * It will try to get a fair environment for each run by forcing the garbage collection
+   * Note that the Cu.forceGC won't trigger the cycle collector, so it makes use of
+   * nsIDOMWindowUtils.garbageCollect for a thorough GC
+   *
+   * Reference:
+   *   https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XPCOM/Language_Bindings/Components.utils.forceGC
+   *
    * It will not handle any exceptions thrown from the benchmark function
    */
   _asyncRunN: Task.async(function*(n) {
+    Services.appShell.hiddenDOMWindow
+            .QueryInterface(Ci.nsIInterfaceRequestor)
+            .getInterface(Ci.nsIDOMWindowUtils)
+            .garbageCollect();
     this.N = n;
     this.resetTimer();
     this.startTimer();
@@ -288,4 +301,15 @@ Benchmark.prototype = {
   })
 };
 
+const PREF_LOG_LEVEL = `extensions.${self.id}.sdk.console.logLevel`;
+
+// forceLog allows the user to use the console.log() regardless the current log level
+function forceLog() {
+  let logLevel = prefs.get(PREF_LOG_LEVEL, "error");
+  prefs.set(PREF_LOG_LEVEL, "info");
+  console.log.call(console, ...arguments); // eslint-disable-line
+  prefs.set(PREF_LOG_LEVEL, logLevel);
+}
+
 exports.Benchmark = Benchmark;
+exports.forceLog = forceLog;

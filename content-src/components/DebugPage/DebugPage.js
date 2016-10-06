@@ -5,6 +5,7 @@ const {SpotlightItem} = require("components/Spotlight/Spotlight");
 const GroupedActivityFeed = require("components/ActivityFeed/ActivityFeed");
 const TopSites = require("components/TopSites/TopSites");
 const faker = require("test/faker");
+const sizeof = require("object-sizeof");
 
 // Only include this in DEVELOPMENT builds
 let JSONTree;
@@ -40,10 +41,14 @@ const DebugPage = React.createClass({
   },
   render() {
     const plainText = JSON.stringify({raw: this.props.raw, newTab: this.props.newTab}, null, 2);
+    const downloadState = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(this.props.raw))}`;
+
     return (<main className="debug-page">
       <div className="new-tab-wrapper">
         <section>
-          <h2>Plain text</h2>
+          <h2>State as plain text</h2>
+          <p>Apx. current size: {Math.round(sizeof(this.props.raw) / 1024)}kb</p>
+          <p><a className="btn" href={downloadState} download="activity-stream-state.json">Download current state to file</a></p>
           <textarea value={plainText} />
           <Viewer {...this.props} />
         </section>
@@ -72,7 +77,8 @@ const DebugPage = React.createClass({
                 {selectSpotlight({
                   Highlights: this.props.raw[this.state.dataSource],
                   WeightedHighlights: this.props.raw[this.state.dataSource],
-                  Prefs: this.props.raw.Prefs
+                  Prefs: this.props.raw.Prefs,
+                  Experiments: this.props.raw.Experiments
                 }).rows.map((item, i) =>
                   (<SpotlightItem key={i} {...item} />))
                 }

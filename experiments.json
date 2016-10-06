@@ -28,5 +28,35 @@
       "threshold": 0.3,
       "description": "Show a recommendation in the third highlights spot"
     }
+  },
+  "metadataService": {
+    "name": "Use Mozilla MetadataService",
+    "active": false,
+    "description": "Compute metadata using MetadataService",
+    "control": {
+      "value": false,
+      "description": "Use Embedly"
+    },
+    "variant": {
+      "id": "exp-003-metadata-service",
+      "value": true,
+      "threshold": 0.3,
+      "description": "Use MetadataService"
+    }
+  },
+  "weightedHighlights": {
+    "name": "Weighted Highlights",
+    "active": true,
+    "description": "Use weighted highlights instead of the query based ones.",
+    "control": {
+      "value": false,
+      "description": "Use the query based system."
+    },
+    "variant": {
+      "id": "exp-003-weighted-highlights",
+      "value": true,
+      "threshold": 0.4,
+      "description": "Use the score based highlights."
+    }
   }
 }
