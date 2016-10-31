@@ -4,17 +4,18 @@ const {selectNewTabSites} = require("selectors/selectors");
 const TopSites = require("components/TopSites/TopSites");
 const GroupedActivityFeed = require("components/ActivityFeed/ActivityFeed");
 const Spotlight = require("components/Spotlight/Spotlight");
-const SpotlightFeed = require("components/Spotlight/SpotlightFeed");
 const Search = require("components/Search/Search");
 const Loader = require("components/Loader/Loader");
 const ContextMenu = require("components/ContextMenu/ContextMenu");
 const {actions} = require("common/action-manager");
-const {Link} = require("react-router");
 const setFavicon = require("lib/set-favicon");
 const classNames = require("classnames");
 const PAGE_NAME = "NEW_TAB";
-
-const {MAX_TOP_ACTIVITY_ITEMS} = require("common/constants");
+const {
+  MAX_TOP_ACTIVITY_ITEMS,
+  WEIGHTED_HIGHLIGHTS_LENGTH,
+  SPOTLIGHT_DEFAULT_LENGTH
+} = require("common/constants");
 
 const NewTabPage = React.createClass({
   getInitialState() {
@@ -40,27 +41,46 @@ const NewTabPage = React.createClass({
     // Note that data may or may not be complete, depending on
     // the state of the master store
     this.props.dispatch(actions.NotifyPerf("NEWTAB_RENDER"));
-  },
-  _renderRecentActivity() {
-    // The first 3 items go to the Top Highlights position, the rest get rendered in the SpotlightFeed.
-    if (this.props.Spotlight.weightedHighlights) {
-      return (<section>
-        <SpotlightFeed sites={this.props.Spotlight.rows.slice(3)} page={PAGE_NAME} />
-      </section>);
-    }
 
-    return (<section>
-      <h3 ref="title" className="section-title">Recent Activity</h3>
-      <GroupedActivityFeed sites={this.props.TopActivity.rows} length={MAX_TOP_ACTIVITY_ITEMS} page={PAGE_NAME}
-        maxPreviews={1} />
-    </section>);
+    // Check for stabilization of state changes if things aren't ready
+    if (this.props.isReady === false) {
+      let lastSize = 0;
+      let lastUpdate = Date.now();
+      setInterval(() => {
+        // Reload the page if things appear to have stabilized
+        let now = Date.now();
+        let newSize = (localStorage.ACTIVITY_STREAM_STATE || "").length;
+        if (newSize === lastSize) {
+          if (now - lastUpdate > 3000) {
+            location.reload();
+          }
+        }
+        // Remember the time of the last state change
+        else {
+          lastSize = newSize;
+          lastUpdate = now;
+        }
+      }, 100);
+    }
+  },
+  renderRecentActivity() {
+    return (
+      <section>
+        <h3 ref="title" className="section-title">Recent Activity</h3>
+        <GroupedActivityFeed sites={this.props.TopActivity.rows} length={MAX_TOP_ACTIVITY_ITEMS} page={PAGE_NAME}
+                             maxPreviews={1} />
+      </section>
+    );
   },
   render() {
     const props = this.props;
     const recommendationLabel = "Show Trending Highlights";
-    const recommendationIcon = props.Spotlight.recommendationShown ? "check" : "   ";
+    const recommendationIcon = props.Highlights.recommendationShown ? "check" : "   ";
     const showRecommendationOption = props.showRecommendationOption;
 
+    const spotlightLength =
+      this.props.Highlights.weightedHighlights ? WEIGHTED_HIGHLIGHTS_LENGTH :
+      SPOTLIGHT_DEFAULT_LENGTH;
     return (<main className="new-tab">
       <div className="new-tab-wrapper">
         <section>
@@ -75,17 +95,17 @@ const NewTabPage = React.createClass({
 
         <div className={classNames("show-on-init", {on: this.props.isReady})}>
           <section>
-            <TopSites page={PAGE_NAME} sites={props.TopSites.rows} />
+            <TopSites page={PAGE_NAME} sites={props.TopSites.rows} showHint={props.TopSites.showHint} />
           </section>
 
           <section>
-            <Spotlight page={PAGE_NAME} showRating={props.Spotlight.metadataRating} sites={props.Spotlight.rows} />
+            <Spotlight page={PAGE_NAME} length={spotlightLength}
+              sites={props.Highlights.rows} />
           </section>
 
-          {this._renderRecentActivity()}
+          { props.Highlights.weightedHighlights ? null : this.renderRecentActivity() }
 
           <section className="bottom-links-container">
-            <Link className="bottom-link" to="/timeline"><span className="icon icon-spacer icon-activity-stream" /> See all activity</Link>
             <span className="link-wrapper-right">
               <a
                 ref="settingsLink"
@@ -105,15 +125,13 @@ const NewTabPage = React.createClass({
           </section>
         </div>
       </div>
-
-      <Link className="debug-link" to="/debug">debug</Link>
     </main>);
   }
 });
 
 NewTabPage.propTypes = {
   TopSites: React.PropTypes.object.isRequired,
-  Spotlight: React.PropTypes.object.isRequired,
+  Highlights: React.PropTypes.object.isRequired,
   TopActivity: React.PropTypes.object.isRequired,
   dispatch: React.PropTypes.func.isRequired
 };

@@ -1,9 +1,10 @@
 /* globals Task, ClientID */
+"use strict";
 
 const {PlacesProvider} = require("addon/PlacesProvider");
-const {SearchProvider} = require("addon/SearchProvider");
 const {MetadataStore, METASTORE_NAME} = require("addon/MetadataStore");
-const {MetadataCache} = require("addon/MetadataCache");
+const {TelemetrySender} = require("addon/TelemetrySender");
+const {TabTracker} = require("addon/TabTracker");
 const {ActivityStreams} = require("addon/ActivityStreams");
 const {setTimeout, clearTimeout} = require("sdk/timers");
 const {Cu} = require("chrome");
@@ -20,16 +21,20 @@ const kMaxConnectRetry = 120;
 let app = null;
 let metadataStore = null;
 let connectRetried = 0;
+let reconnectTimeoutID = null;
 
 Object.assign(exports, {
   main(options) {
     // options.loadReason can be install/enable/startup/upgrade/downgrade
     PlacesProvider.links.init();
-    SearchProvider.search.init();
     options.telemetry = false;
 
     Task.spawn(function*() {
-      options.clientID = yield ClientID.getClientID();
+      const clientID = yield ClientID.getClientID();
+      options.clientID = clientID;
+      const tabTracker = new TabTracker(options);
+      const telemetrySender = new TelemetrySender();
+
       if (options.loadReason === "upgrade") {
         yield this.migrateMetadataStore();
       }
@@ -39,7 +44,12 @@ Object.assign(exports, {
       } catch (e) {
         this.reconnectMetadataStore();
       }
-      app = new ActivityStreams(metadataStore, options);
+      app = new ActivityStreams(metadataStore, tabTracker, telemetrySender, options);
+      try {
+        app.init();
+      } catch (e) {
+        Cu.reportError(e);
+      }
     }.bind(this));
   },
 
@@ -67,7 +77,7 @@ Object.assign(exports, {
       throw new Error("Metadata store reconnecting has reached the maximum limit");
     }
 
-    this.reconnectTimeoutID = setTimeout(() => {
+    reconnectTimeoutID = setTimeout(() => {
       metadataStore.asyncConnect().then(() => {connectRetried = 0;})
         .catch(error => {
           // increment the connect counter to avoid the endless retry
@@ -83,8 +93,9 @@ Object.assign(exports, {
       app = null;
     }
 
-    if (this.reconnectTimeoutID) {
-      clearTimeout(this.reconnectTimeoutID);
+    if (reconnectTimeoutID) {
+      clearTimeout(reconnectTimeoutID);
+      reconnectTimeoutID = null;
     }
 
     if (metadataStore) {
@@ -95,8 +106,6 @@ Object.assign(exports, {
       }
     }
 
-    MetadataCache.cache.uninit();
     PlacesProvider.links.uninit();
-    SearchProvider.search.uninit();
   }
 });

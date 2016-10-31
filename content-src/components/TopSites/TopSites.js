@@ -6,7 +6,10 @@ const classNames = require("classnames");
 const LinkMenu = require("components/LinkMenu/LinkMenu");
 const LinkMenuButton = require("components/LinkMenuButton/LinkMenuButton");
 const SiteIcon = require("components/SiteIcon/SiteIcon");
+const Hint = require("components/Hint/Hint");
+
 const DEFAULT_LENGTH = 6;
+const TOP_SITES_HINT_TEXT = "Get right to the sites you visit most: click on a tile to open or hover to share, bookmark or delete.";
 
 const TopSites = React.createClass({
   getInitialState() {
@@ -33,12 +36,8 @@ const TopSites = React.createClass({
   },
   render() {
     const sites = this.props.sites.slice(0, this.props.length);
-    const blankSites = [];
-    for (let i = 0; i < (this.props.length - sites.length); i++) {
-      blankSites.push(<div className="tile tile-placeholder" key={`blank-${i}`} />);
-    }
     return (<section className="top-sites">
-      <h3 className="section-title">Top Sites</h3>
+      <h3 className="section-title">Top Sites <Hint id="top_sites_hint" title="Top Sites" body={TOP_SITES_HINT_TEXT} /></h3>
       <div className="tiles-wrapper">
         {sites.map((site, i) => {
           const isActive = this.state.showContextMenu && this.state.activeTile === i;
@@ -60,7 +59,6 @@ const TopSites = React.createClass({
               index={i} />
         </div>);
         })}
-        {blankSites}
       </div>
     </section>);
   }
@@ -69,6 +67,7 @@ const TopSites = React.createClass({
 TopSites.propTypes = {
   length: React.PropTypes.number,
   page: React.PropTypes.string.isRequired,
+  showHint: React.PropTypes.bool,
   sites: React.PropTypes.arrayOf(
     React.PropTypes.shape({
       url: React.PropTypes.string.isRequired,

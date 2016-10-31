@@ -3,14 +3,19 @@
 // Instead, import depdencies like this:
 // require("common/vendor")("my-dependency");
 
+if (typeof platform_require !== "undefined") {
+  const {setTimeout, clearTimeout} = platform_require("sdk/timers");
+  global.setTimeout = setTimeout;
+  global.clearTimeout = clearTimeout;
+}
+
 const vendorModules = {
   "redux": require("redux"),
   "redux-thunk": require("redux-thunk"),
-  "seedrandom": require("seedrandom"),
   "url-parse": require("url-parse"),
-  "DoublyLinkedList": require("DoublyLinkedList/doubly-linked-list").DoublyLinkedList,
   "PageMetadataParser": require("page-metadata-parser"),
-  "redux-watch": require("redux-watch")
+  "redux-watch": require("redux-watch"),
+  "lodash.debounce": require("lodash.debounce")
 };
 
 module.exports = function vendor(moduleName) {

@@ -8,8 +8,6 @@ const am = new ActionManager([
   "TOP_FRECENT_SITES_REQUEST",
   "TOP_FRECENT_SITES_RESPONSE",
   "RECEIVE_CURRENT_ENGINE",
-  "RECENT_BOOKMARKS_REQUEST",
-  "RECENT_BOOKMARKS_RESPONSE",
   "RECEIVE_BOOKMARK_ADDED",
   "RECEIVE_BOOKMARK_REMOVED",
   "RECEIVE_PLACES_CHANGES",
@@ -21,7 +19,6 @@ const am = new ActionManager([
   "EXPERIMENTS_RESPONSE",
   "NOTIFY_BLOCK_URL",
   "NOTIFY_UNBLOCK_URL",
-  "NOTIFY_UNBLOCK_ALL",
   "NOTIFY_BOOKMARK_ADD",
   "NOTIFY_BOOKMARK_DELETE",
   "NOTIFY_HISTORY_DELETE",
@@ -49,19 +46,19 @@ const am = new ActionManager([
   "PREFS_RESPONSE",
   "NOTIFY_UPDATE_PREF",
   "PREF_CHANGED_RESPONSE",
-  "NOTIFY_RATE_METADATA",
   "SHARE_PROVIDERS_REQUEST",
   "SHARE_PROVIDERS_RESPONSE",
   "NOTIFY_SHARE_URL",
   "NOTIFY_COPY_URL",
-  "NOTIFY_EMAIL_URL"
+  "NOTIFY_EMAIL_URL",
+  "ENABLE_ALL_HINTS",
+  "DISABLE_HINT"
 ]);
 
 // This is a a set of actions that have sites in them,
 // so we can do stuff like filter them, add embedly data, etc.
 am.ACTIONS_WITH_SITES = new Set([
   "TOP_FRECENT_SITES_RESPONSE",
-  "RECENT_BOOKMARKS_RESPONSE",
   "RECENT_LINKS_RESPONSE",
   "HIGHLIGHTS_LINKS_RESPONSE"
 ].map(type => am.type(type)));
@@ -118,34 +115,6 @@ function RequestExpect(type, expect, options = {}) {
     action.meta = Object.assign({}, options.meta, action.meta);
   }
   return action;
-}
-
-function RequestTopFrecent() {
-  return RequestExpect("TOP_FRECENT_SITES_REQUEST", "TOP_FRECENT_SITES_RESPONSE");
-}
-
-function RequestBookmarks(options) {
-  return RequestExpect("RECENT_BOOKMARKS_REQUEST", "RECENT_BOOKMARKS_RESPONSE", options);
-}
-
-function RequestMoreBookmarks(beforeDate) {
-  return RequestBookmarks({
-    data: {beforeDate},
-    append: true,
-    meta: {skipPreviewRequest: true}
-  });
-}
-
-function RequestRecentLinks(options) {
-  return RequestExpect("RECENT_LINKS_REQUEST", "RECENT_LINKS_RESPONSE", options);
-}
-
-function RequestMoreRecentLinks(beforeDate, filter = "") {
-  return RequestRecentLinks({
-    data: {beforeDate, filter},
-    append: true,
-    meta: {skipPreviewRequest: true}
-  });
 }
 
 function RequestHighlightsLinks() {
@@ -215,10 +184,6 @@ function NotifyUnblockURL(url) {
   return Notify("NOTIFY_UNBLOCK_URL", url);
 }
 
-function NotifyUnblockAll() {
-  return Notify("NOTIFY_UNBLOCK_ALL");
-}
-
 function NotifyBlockRecommendation(url) {
   return Notify("NOTIFY_BLOCK_RECOMMENDATION", url);
 }
@@ -239,12 +204,8 @@ function NotifyPerf(data) {
   return Notify("NOTIFY_PERFORMANCE", data);
 }
 
-function NotifyRateMetadata(data) {
-  return Notify("NOTIFY_RATE_METADATA", data);
-}
-
 function NotifyEvent(data) {
-  if (!eventConstants.pages.has(data.page)) {
+  if (!eventConstants.defaultPage === data.page) {
     throw new Error(`${data.page} is not a valid page`);
   }
   if (!eventConstants.events.has(data.event)) {
@@ -284,15 +245,18 @@ function NotifyShareUrl(url, title, provider) {
   return Notify("NOTIFY_SHARE_URL", {url, title, provider});
 }
 
+function DisableHint(id) {
+  return Notify("DISABLE_HINT", id);
+}
+
+function ShowAllHints() {
+  return Notify("ENABLE_ALL_HINTS");
+}
+
 am.defineActions({
   Notify,
   Response,
   RequestExpect,
-  RequestTopFrecent,
-  RequestBookmarks,
-  RequestMoreBookmarks,
-  RequestRecentLinks,
-  RequestMoreRecentLinks,
   RequestHighlightsLinks,
   RequestInitialPrefs,
   RequestSearchState,
@@ -302,7 +266,6 @@ am.defineActions({
   RequestWeightedHighlights,
   NotifyBlockURL,
   NotifyUnblockURL,
-  NotifyUnblockAll,
   NotifyBookmarkAdd,
   NotifyBookmarkDelete,
   NotifyHistoryDelete,
@@ -319,11 +282,12 @@ am.defineActions({
   NotifyBlockRecommendation,
   NotifyToggleRecommendations,
   NotifyUpdatePref,
-  NotifyRateMetadata,
   RequestShareProviders,
   NotifyCopyUrl,
   NotifyEmailUrl,
-  NotifyShareUrl
+  NotifyShareUrl,
+  ShowAllHints,
+  DisableHint
 });
 
 module.exports = am;

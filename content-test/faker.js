@@ -1,7 +1,7 @@
 const faker = require("faker");
 const moment = require("moment");
 const tiptop = require("tippy-top-sites");
-const {selectSpotlight} = require("selectors/selectors");
+const {selectSpotlight} = require("selectors/oldSpotlightSelectors");
 
 const BASE_TIP_TOP_FAVICON_URL = "favicons/images/";
 
@@ -72,7 +72,6 @@ function createSite(optional = {}) {
     "favicon": "data:image/png;base64,iVBORw0KGgoAA",
     "title": tiptopSite.title || `${name} - ${faker.company.catchPhrase()}`,
     "url": tiptopSite.url || faker.internet.url(),
-    "provider_display": `${name}.com`,
     "lastVisitDate": date.valueOf(),
     "frecency": faker.random.number({min: 10, max: 2000}),
     "type": options.type,

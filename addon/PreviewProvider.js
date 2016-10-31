@@ -6,7 +6,6 @@ const simplePrefs = require("sdk/simple-prefs");
 const self = require("sdk/self");
 const {TippyTopProvider} = require("addon/TippyTopProvider");
 const {getColor} = require("addon/ColorAnalyzerProvider");
-const {MetadataCache} = require("addon/MetadataCache");
 const {absPerf} = require("common/AbsPerf");
 
 const ENABLED_PREF = "previews.enabled";
@@ -216,9 +215,20 @@ PreviewProvider.prototype = {
         return null;
       }
       let enhancedLink = Object.assign({}, site);
-      // Find the item in the map and return it if it exists
+
+      // Find the item in the map and return it if it exists, then unpack that
+      // object onto our new link
       if (existingLinks.has(site.cache_key)) {
-        Object.assign(enhancedLink, existingLinks.get(site.cache_key));
+        const cachedMetadataLink = existingLinks.get(site.cache_key);
+        enhancedLink.title = cachedMetadataLink.title;
+        enhancedLink.description = cachedMetadataLink.description;
+        enhancedLink.provider_name = cachedMetadataLink.provider_name;
+        enhancedLink.images = cachedMetadataLink.images;
+        enhancedLink.favicons = cachedMetadataLink.favicons;
+        enhancedLink.metadata_source = cachedMetadataLink.metadata_source;
+        if (cachedMetadataLink.favicons && cachedMetadataLink.favicons.length) {
+          enhancedLink.favicon_url = cachedMetadataLink.favicons[0].url;
+        }
       }
 
       // Add tippy top data, if available
@@ -237,25 +247,16 @@ PreviewProvider.prototype = {
    * from the cache before querying the metadata store
    */
   _asyncFindItemsInDB: Task.async(function*(links) {
-    let cacheMissedKeys = [];
-    let linksMetadata = [];
+    let cacheKeys = [];
 
-    // Hit the cache first
+    // Create the cache keys
     links.forEach(link => {
       const key = link.cache_key;
-      const metadataFromCache = MetadataCache.cache.get(key);
-      if (metadataFromCache) {
-        linksMetadata.push(metadataFromCache);
-      } else {
-        cacheMissedKeys.push(key);
-      }
+      cacheKeys.push(key);
     });
 
     // Hit the database for the missing keys
-    if (cacheMissedKeys.length) {
-      const missedLinksMetadata = yield this._metadataStore.asyncGetMetadataByCacheKey(cacheMissedKeys);
-      linksMetadata = linksMetadata.concat(missedLinksMetadata);
-    }
+    const linksMetadata = yield this._metadataStore.asyncGetMetadataByCacheKey(cacheKeys);
     return linksMetadata;
   }),
 
@@ -352,9 +353,9 @@ PreviewProvider.prototype = {
       expired_at: (this.options.metadataTTL) + Date.now(),
       metadata_source: metadataSource
     }));
-    this._metadataStore.asyncInsert(linksToInsert);
-    linksToInsert.forEach(link => {
-      MetadataCache.cache.add(link.cache_key, link);
+    this._metadataStore.asyncInsert(linksToInsert).catch(err => {
+      // TODO: add more exception handling code, e.g. sending exception report
+      Cu.reportError(err);
     });
   },
 
@@ -374,12 +375,6 @@ PreviewProvider.prototype = {
     let key = this._createCacheKey(url);
     if (!key) {
       return false;
-    }
-
-    // Hit the cache first and return true immediately if we have a hit
-    const metadataFromCache = MetadataCache.cache.get(key);
-    if (metadataFromCache) {
-      return true;
     }
 
     const linkExists = yield this._metadataStore.asyncCacheKeyExists(key);

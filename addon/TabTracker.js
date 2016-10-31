@@ -1,4 +1,5 @@
 /* globals Services, Locale, XPCOMUtils */
+"use strict";
 
 const tabs = require("sdk/tabs");
 const {Ci, Cu} = require("chrome");
@@ -16,16 +17,12 @@ const TELEMETRY_PREF = "telemetry";
 const COMPLETE_NOTIF = "tab-session-complete";
 const ACTION_NOTIF = "user-action-event";
 const PERFORMANCE_NOTIF = "performance-event";
-const RATING_NOTIF = "metadata-rating-event";
 const PERF_LOG_COMPLETE_NOTIF = "performance-log-complete";
 
-function TabTracker(trackableURLs, clientID, placesQueries, experimentId) {
+function TabTracker(options) {
   this._tabData = {};
-
-  this._clientID = clientID;
-  this._experimentID = experimentId;
-  this._trackableURLs = trackableURLs;
-  this._placesQueries = placesQueries;
+  this._clientID = options.clientID;
+  this._shieldVariant = options.shield_variant;
   this.onOpen = this.onOpen.bind(this);
 
   this._onPrefChange = this._onPrefChange.bind(this);
@@ -41,6 +38,12 @@ TabTracker.prototype = {
 
   get tabData() {
     return this._tabData;
+  },
+
+  init(trackableURLs, placesQueries, experimentId) {
+    this._trackableURLs = trackableURLs;
+    this._placesQueries = placesQueries;
+    this._experimentID = experimentId;
   },
 
   _addListeners() {
@@ -73,24 +76,17 @@ TabTracker.prototype = {
     };
   },
 
-  _resolvePageType(tabUrl) {
-    let page = eventConstants.defaultPage;
-    eventConstants.urlPatternToPageMap.forEach((value, pattern) => {
-      if (pattern.test(tabUrl)) {
-        page = value;
-      }
-    });
-    return page;
-  },
-
   _setCommonProperties(payload, url) {
     payload.client_id = this._clientID;
     payload.addon_version = self.version;
     payload.locale = Locale.getLocale();
-    payload.page = this._resolvePageType(url);
+    payload.page = eventConstants.defaultPage;
     payload.session_id = this._tabData.session_id;
     if (this._experimentID) {
       payload.experiment_id = this._experimentID;
+    }
+    if (this._shieldVariant) {
+      payload.shield_variant = this._shieldVariant;
     }
   },
 
@@ -114,12 +110,6 @@ TabTracker.prototype = {
     if (payload.event === "SEARCH" || payload.event === "CLICK") {
       this._tabData.unload_reason = payload.event.toLowerCase();
     }
-  },
-
-  handleRatingEvent(payload) {
-    payload.action = "activity_stream_metadata_rating";
-    payload.addon_version = self.version;
-    Services.obs.notifyObservers(null, RATING_NOTIF, JSON.stringify(payload));
   },
 
   handlePerformanceEvent(eventData, eventName, value) {

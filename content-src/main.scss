@@ -76,22 +76,18 @@ a {
 @import './styles/icons';
 
 // Components
-@import './components/Header/Header';
 @import './components/Base/Base';
 @import './components/TopSites/TopSites';
 @import './components/ActivityFeed/ActivityFeed';
 @import './components/Spotlight/Spotlight';
-@import './components/Spotlight/SpotlightFeed';
 @import './components/NewTabPage/NewTabPage';
-@import './components/TimelinePage/TimelinePage';
 @import './components/SiteIcon/SiteIcon';
 @import './components/Search/Search';
 @import './components/DebugPage/DebugPage';
 @import './components/Loader/Loader';
-@import './components/LoadMore/LoadMore';
 @import './components/ContextMenu/ContextMenu';
 @import './components/LinkMenuButton/LinkMenuButton';
 @import './components/MediaPreview/MediaPreview';
 @import './components/HighlightContext/HighlightContext';
 @import './components/Tooltip/Tooltip';
-@import './components/Rating/Rating';
+@import './components/Hint/Hint';

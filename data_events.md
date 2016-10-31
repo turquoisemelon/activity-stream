@@ -1,6 +1,6 @@
 # Metrics we collect
 
-This is an overview of the different kinds of data we collect in Activity Stream experiment.
+This is an overview of the different kinds of data we collect in Activity Stream experiment. See [data_dictionary.md](data_dictionary.md) for more details for each field.
 
 ## User event pings
 
@@ -16,7 +16,7 @@ A user event ping includes some basic metadata (tab id, addon version, etc.) as 
   "event": "[CLICK | DELETE | BLOCK | SHARE | LOAD_MORE | SEARCH | SHARE_TOOLBAR]",
 
   // This is where the interaction occurred
-  "page": "[NEW_TAB | TIMELINE_ALL | TIMELINE_BOOKMARKS]",
+  "page": "NEW_TAB",
 
   // Optional field indicating the UI component type
   "source": ["TOP_SITES" | "FEATURED" | "ACTIVITY_FEED"],
@@ -49,6 +49,8 @@ A user event ping includes some basic metadata (tab id, addon version, etc.) as 
   "client_id": "26288a14-5cc4-d14f-ae0a-bb01ef45be9c",
   "addon_version": "1.0.12",
   "locale": "en-US"
+  // Optional field, only set if they are in a shield study
+  "shield_variant": ["shield-study-01-ActivityStream" | "shield-study-01-Tiles"]
 }
 ```
 
@@ -57,7 +59,7 @@ A user event ping includes some basic metadata (tab id, addon version, etc.) as 
 ```js
 {
   "event": "CLICK",
-  "page": ["NEW_TAB" | "TIMELINE_ALL" | "TIMELINE_BOOKMARKS"],
+  "page": "NEW_TAB",
   "source": ["TOP_SITES" | "FEATURED" | "ACTIVITY_FEED"],
   "action_position": 2,
   "action": "activity_stream_event",
@@ -69,7 +71,9 @@ A user event ping includes some basic metadata (tab id, addon version, etc.) as 
   // Optional field, only sent if a recommendation site gets clicked
   "url": "https://www.example.com",
   // Optional field, only sent if a recommendation site gets clicked
-  "recommender_type": "pocket-trending"
+  "recommender_type": "pocket-trending",
+  // Optional field, only set if they are in a shield study
+  "shield_variant": ["shield-study-01-ActivityStream" | "shield-study-01-Tiles"]
 }
 ```
 
@@ -78,7 +82,7 @@ A user event ping includes some basic metadata (tab id, addon version, etc.) as 
 ```js
   {
     "event": "DELETE",
-    "page": ["NEW_TAB" | "TIMELINE_ALL" | "TIMELINE_BOOKMARKS"],
+    "page": "NEW_TAB",
     "source": ["TOP_SITES" | "FEATURED" | "ACTIVITY_FEED"],
     "action_position": 0,
     "action": "activity_stream_event",
@@ -95,7 +99,7 @@ A user event ping includes some basic metadata (tab id, addon version, etc.) as 
 ```js
 {
   "event": "BLOCK",
-  "page": ["NEW_TAB" | "TIMELINE_ALL" | "TIMELINE_BOOKMARKS"],
+  "page": "NEW_TAB",
   "source": ["TOP_SITES" | "FEATURED" | "ACTIVITY_FEED"],
   "action_position": 4,
   "action": "activity_stream_event",
@@ -108,6 +112,8 @@ A user event ping includes some basic metadata (tab id, addon version, etc.) as 
   "url": "https://www.example.com",
   // optional field, only sent if a recommendation site gets clicked
   "recommender_type": "pocket-trending"
+  // Optional field, only set if they are in a shield study
+  "shield_variant": ["shield-study-01-ActivityStream" | "shield-study-01-Tiles"]
 }
 ```
 
@@ -116,7 +122,7 @@ A user event ping includes some basic metadata (tab id, addon version, etc.) as 
 ```js
 {
   "event": "SHARE",
-  "page": ["NEW_TAB" | "TIMELINE_ALL" | "TIMELINE_BOOKMARKS"],
+  "page": "NEW_TAB"
   "source": "ACTIVITY_FEED",
   "provider": "https://facebook.com",
   "action_position": 0,
@@ -143,19 +149,6 @@ It doesn't capture success or failure to share after.
   "client_id": "83982d21-4f49-eb44-a3ed-8e9ac6f87b05",
   "addon_version": "1.0.12",
   "locale": "en-US"
-```
-
-## Rating the metadata of a Highlight
-The user has the option to toggle on the feature which allows them to rate from 1 (being the lowest) to 5 (being the highest) the quality of the metadata that is being displayed in the associated Highlight. With multiple sources computing similar metadata it's important to know how it is performing. Ratings are affected by rich image quality, title quality, description relevancy, favicon quality etc.
-
-```js
-{
-  "action": "activity_stream_metadata_rating",
-  "addon_version": "1.0.12",
-  "rating": 4,
-  "rated_index": 2,
-  "rated_type": "bookmark",
-  "metadataSource": ["Embedly" | "MetadataService" | "Local"]
 }
 ```
 
@@ -170,7 +163,7 @@ All `"activity_stream_session"` pings have the following basic shape. Some field
 ```js
 {
   // These are all variable. See below for what causes different unload_reasons
-  "url": "resource://activity-streams/data/content/activity-streams.html#/[timeline][/bookmarks]",
+  "url": "resource://activity-streams/data/content/activity-streams.html",
   "load_reason": "[newtab | focus]",
   "unload_reason": "[navigation | unfocus | refresh]",
 
@@ -184,6 +177,8 @@ All `"activity_stream_session"` pings have the following basic shape. Some field
   "page": "NEW_TAB",
   "action": "activity_stream_session",
   "session_duration": 4199
+  // Optional field, only set if they are in a shield study
+  "shield_variant": ["shield-study-01-ActivityStream" | "shield-study-01-Tiles"]
 }
 ```
 

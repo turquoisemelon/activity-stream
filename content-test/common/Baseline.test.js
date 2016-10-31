@@ -37,7 +37,8 @@ const fakeUrls = [
     visitCount: 2,
     title: "Activity Stream",
     description: "",
-    images: [],
+    images: [{"url": "google.com", "width": 100, "height": 100}],
+    imageCount: 1,
     lastVisitDate: Date.now() - 1e2
   },
   {
@@ -46,7 +47,8 @@ const fakeUrls = [
     visitCount: 1,
     title: "Activity Stream",
     description: "",
-    images: [],
+    images: [{"url": "github.com", "width": 100, "height": 100}],
+    imageCount: 1,
     lastVisitDate: Date.now() - 1e2
   },
   {
@@ -55,7 +57,8 @@ const fakeUrls = [
     visitCount: 1,
     title: "Activity Stream",
     description: "",
-    images: [],
+    images: [{"url": "github.com", "width": 100, "height": 100}],
+    imageCount: 1,
     lastVisitDate: Date.now() - 1e2
   },
   {
@@ -64,7 +67,8 @@ const fakeUrls = [
     visitCount: 1,
     title: "Activity Stream",
     description: "",
-    images: [],
+    images: [{"url": "foo.com", "width": 100, "height": 100}],
+    imageCount: 1,
     lastVisitDate: Date.now() - 1e2
   },
   {
@@ -74,7 +78,8 @@ const fakeUrls = [
     title: "Activity Stream",
     bookmarkId: 1,
     description: "",
-    images: [],
+    images: [{"url": "bar.com", "width": 100, "height": 100}],
+    imageCount: 1,
     lastVisitDate: Date.now() - 1e2
   },
   {
@@ -83,7 +88,8 @@ const fakeUrls = [
     visitCount: 1,
     title: "Old link",
     description: "",
-    images: [],
+    images: [{"url": "bar1.com", "width": 100, "height": 100}],
+    imageCount: 1,
     lastVisitDate: Date.now() - 1e6
   },
   {
@@ -92,7 +98,8 @@ const fakeUrls = [
     visitCount: 30,
     title: "Very visited",
     description: "",
-    images: [],
+    images: [{"url": "bar2.com", "width": 100, "height": 100}],
+    imageCount: 1,
     lastVisitDate: Date.now() - 1e2
   }
 ];
@@ -137,9 +144,22 @@ describe("Baseline", () => {
     assert.equal(baseline.extractImage(images), 300 * 300);
   });
 
-  it("should return the same number of items after sort", () => {
+  it("should remove duplicate domains", () => {
     let items = baseline.score(fakeUrls);
-    assert.equal(items.length, fakeUrls.length);
+    assert.equal(items.length, fakeUrls.length - 1);
+  });
+
+  it("should keep the highest scored duplicate domain", () => {
+    // we are under the assumption that the sites are pre-sorted by score
+    // before entering the dedupe function
+    const fakethings = [
+      {host: "google.com", score: 10},
+      {host: "github.com", score: 20},
+      {host: "github.com", score: 5},
+      {host: "github.com", score: 3}];
+    let items = baseline._dedupeSites(fakethings);
+    assert.equal(items.length, 2);
+    assert.equal(items[1].score, 20);
   });
 
   it("should sort items", () => {
@@ -153,9 +173,15 @@ describe("Baseline", () => {
     assert.isOk(descending);
   });
 
+  it("should remove items with no images", () => {
+    let fakeUrlsWithNoImages = fakeUrls.map(item => Object.assign({}, item, {images: []}));
+    let items = baseline.score(fakeUrlsWithNoImages);
+    assert.equal(items.length, 0);
+  });
+
   it("should decrease score for consecutive items from the same domain", () => {
     let fakeUrlsWithScore = fakeUrls.map(url => Object.assign({}, url, {score: 1}));
-    let items = baseline.dedupe(fakeUrlsWithScore);
+    let items = baseline._adjustConsecutiveEntries(fakeUrlsWithScore);
     assert.ok(items[1].score > items[2].score);
   });
 
@@ -166,7 +192,7 @@ describe("Baseline", () => {
       {host: "bar.com", images: [{size: 1000, width: 300, height: 300, url: "http://www.sameimage.jpg"}], score: 1},
       {host: "diff.com", images: [{size: 1000, width: 300, height: 300, url: "http://www.diffimage.jpg"}], score: 1}
     ];
-    let items = baseline.dedupe(fakeUrlsWithScore);
+    let items = baseline._adjustConsecutiveEntries(fakeUrlsWithScore);
     assert.ok(items[0].score > items[1].score);
     assert.ok(items[1].score > items[2].score);
     assert.equal(items[1].score, 0.8);
@@ -177,12 +203,12 @@ describe("Baseline", () => {
     let fakeUrlsWithScore = [
       {host: "foo.com", images: [{size: 1000, width: 300, height: 300, url: "http://www.sameimage.jpg"}], score: 1}
     ];
-    let items = baseline.dedupe(fakeUrlsWithScore);
+    let items = baseline._adjustConsecutiveEntries(fakeUrlsWithScore);
     assert.equal(items[0].score, 1);
   });
 
   it("should decrease score for consecutive items with same image (no entries)", () => {
-    let items = baseline.dedupe([]);
+    let items = baseline._adjustConsecutiveEntries([]);
     assert.equal(items.length, 0);
   });
 
@@ -193,13 +219,13 @@ describe("Baseline", () => {
       {host: "diff.com", images: [{size: 1000, width: 300, height: 300, url: "http://www.diffimage.jpg"}], score: 1},
       {host: "diff.com", images: [{size: 1000, width: 300, height: 300, url: "http://www.diffimage.jpg"}], score: 1}
     ];
-    let items = baseline.dedupe(fakeUrlsWithScore);
+    let items = baseline._adjustConsecutiveEntries(fakeUrlsWithScore);
     assert.equal(items[3].score, 0.8);
   });
 
   it("should decrease by the right amount", () => {
     let fakeUrlsWithScore = fakeUrls.map(url => Object.assign({}, url, {score: 1}));
-    let items = baseline.dedupe(fakeUrlsWithScore);
+    let items = baseline._adjustConsecutiveEntries(fakeUrlsWithScore);
     // Items 1 and 2 are both github links so second one gets a lower score.
     assert.equal(items[1].score, 1);
     assert.equal(items[2].score, 0.8);

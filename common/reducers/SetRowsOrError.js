@@ -5,7 +5,8 @@ const DEFAULTS = {
   error: false,
   init: false,
   isLoading: false,
-  canLoadMore: true
+  canLoadMore: true,
+  showHint: true
 };
 
 module.exports = function setRowsOrError(requestType, responseType, querySize) {
@@ -38,16 +39,13 @@ module.exports = function setRowsOrError(requestType, responseType, querySize) {
         break;
       case am.type("RECEIVE_BOOKMARK_ADDED"):
         state.rows = prevState.rows.map(site => {
-          if (site.type === "history" && site.url === action.data.url) {
+          if (site.url === action.data.url) {
             const {bookmarkGuid, bookmarkTitle, lastModified} = action.data;
             const frecency = typeof action.data.frecency !== "undefined" ? action.data.frecency : site.frecency;
             return Object.assign({}, site, {bookmarkGuid, bookmarkTitle, frecency, bookmarkDateCreated: lastModified});
           }
           return site;
         });
-        break;
-      case requestType === am.type("RECENT_BOOKMARKS_REQUEST") && am.type("RECEIVE_BOOKMARK_REMOVED"):
-        state.rows = prevState.rows.filter(val => val.url !== action.data.url);
         break;
       case am.type("RECEIVE_BOOKMARK_REMOVED"):
         state.rows = prevState.rows.map(site => {

@@ -6,7 +6,6 @@ const {Cu} = require("chrome");
 const {data} = require("sdk/self");
 const {PageMod} = require("sdk/page-mod");
 const {setTimeout, clearTimeout} = require("sdk/timers");
-const {ActionButton} = require("sdk/ui/button/action");
 const tabs = require("sdk/tabs");
 const simplePrefs = require("sdk/simple-prefs");
 const privateBrowsing = require("sdk/private-browsing");
@@ -17,10 +16,8 @@ const {Memoizer} = require("addon/Memoizer");
 const {PlacesProvider} = require("addon/PlacesProvider");
 const {SearchProvider} = require("addon/SearchProvider");
 const {ShareProvider} = require("addon/ShareProvider");
-const {TabTracker} = require("addon/TabTracker");
 const {PreviewProvider} = require("addon/PreviewProvider");
 const {RecommendationProvider} = require("addon/RecommendationProvider");
-const {TelemetrySender} = require("addon/TelemetrySender");
 const {PerfMeter} = require("addon/PerfMeter");
 const {AppURLHider} = require("addon/AppURLHider");
 const am = require("common/action-manager");
@@ -55,7 +52,9 @@ const DEFAULT_OPTIONS = {
   placesCacheTimeout: 1800000, // every 30 minutes, rebuild/repopulate the cache
   recommendationTTL: 3600000, // every hour, get a new recommendation
   shareProvider: null,
-  pageScraper: null
+  pageScraper: null,
+  searchProvider: null,
+  recommendationProvider: null
 };
 
 const PLACES_CHANGES_EVENTS = [
@@ -70,100 +69,56 @@ const PLACES_CHANGES_EVENTS = [
 
 const HOME_PAGE_PREF = "browser.startup.homepage";
 
-function ActivityStreams(metadataStore, options = {}) {
+function ActivityStreams(metadataStore, tabTracker, telemetrySender, options = {}) {
   this.options = Object.assign({}, DEFAULT_OPTIONS, options);
   EventEmitter.decorate(this);
-
-  this._store = createStore();
-
+  this._metadataStore = metadataStore;
+  this._tabTracker = tabTracker;
+  this._telemetrySender = telemetrySender;
+  this._populatingCache = {places: false};
   this._newTabURL = `${this.options.pageURL}#/`;
-
-  this._perfMeter = new PerfMeter(this.appURLs);
-
   Services.prefs.setIntPref("places.favicons.optimizeToDimension", 64);
-
-  this._appURLHider = new AppURLHider(this.appURLs);
-
-  this._memoizer = new Memoizer();
-  this._memoized = this._get_memoized(this._memoizer);
-
-  this._telemetrySender = new TelemetrySender();
-
   this._experimentProvider = new ExperimentProvider(
-    options.clientID,
     options.experiments,
     options.rng
   );
-  this._experimentProvider.init();
-
-  this._tabTracker = new TabTracker(
-    this.appURLs,
-    options.clientID,
-    this._memoized,
-    this._experimentProvider.experimentId
-  );
-
-  this._previewProvider = new PreviewProvider(this._tabTracker, metadataStore, this._experimentProvider);
-
-  this._pageScraper = null;
-
-  if (simplePrefs.prefs.pageScraper) {
-    if (!this.options.pageScraper) {
-      this._pageScraper = new PageScraper(this._previewProvider);
-    } else {
-      this._pageScraper = this.options.pageScraper;
-    }
-    this._pageScraper.init();
-  }
-
-  this._populatingCache = {places: false};
-
-  this._asyncBuildPlacesCache();
-
-  // Only create RecommendationProvider if they are in the experiment
-  if (this._experimentProvider.data.recommendedHighlight) {
-    this._recommendationProvider = new RecommendationProvider(this._previewProvider, this._tabTracker);
-    if (simplePrefs.prefs.recommendations) {
-      this._recommendationProvider.asyncSetRecommendedContent();
-    }
-    this._refreshRecommendations(this.options.recommendationTTL);
-  }
-
-  if (this.options.shareProvider) {
-    this._shareProvider = this.options.shareProvider;
-  } else {
-    this._shareProvider = new ShareProvider({eventTracker: this._tabTracker});
-  }
-  this._shareProvider.init();
-
-  this._setupPageMod();
-  this._setupListeners();
-  this._setupButton();
-  NewTabURL.override(this._newTabURL);
-  this._setHomePage();
-  this._prefsProvider = new PrefsProvider({
-    simplePrefs,
-    broadcast: this.broadcast.bind(this),
-    send: this.send.bind(this)
-  });
-
-  this._prefsProvider.init();
-  // This is instantiated with a recommender based on weights if pref is true. Used to score highlights.
-  this._baselineRecommender = null;
-  if (this._experimentProvider.data.weightedHighlights) {
-    this._loadRecommender();
-  }
-
-  this._pageWorker = new PageWorker({store: this._store});
-  this._pageWorker.connect();
-  this._refreshAppState();
 }
 
 ActivityStreams.prototype = {
 
   _pagemod: null,
-  _button: null,
   _newRecommendationTimeoutID: null,
+  _isUnloaded: false,
+
+  init() {
+    let initializePromises = [];
+
+    this._store = createStore();
+    this._initializePerfMeter();
+    this._initializeAppURLHider();
+    this._initializeMemoizer();
+
+    if (!this.options.shield_variant) {
+      this._experimentProvider.init();
+    }
+    this._tabTracker.init(this.appURLs, this._memoized, this._experimentProvider.experimentId);
+    this._initializeSearchProvider();
+    this._initializePreviewProvier(this._experimentProvider, this._metadataStore, this._tabTracker);
+    this._initializePageScraper(this._experimentProvider, this._previewProvider, this._tabTracker);
+    this._initializeRecommendationProvider(this._experimentProvider, this._previewProvider, this._tabTracker);
+    this._initializeShareProvider(this._tabTracker);
+    initializePromises.push(this._initializeBaselineRecommender(this._experimentProvider));
+    this._initializePrefProvider();
+
+    this._setupPageMod();
+    this._setupListeners();
+    NewTabURL.override(this._newTabURL);
+    this._setHomePage();
+    this._setUpPageWorker(this._store);
+
+    // Wait for any asynchronous initializers to finish before loading app data
+    Promise.all(initializePromises).then(() => this._initializeAppData());
+  },
 
   /**
    * Send a message to a worker
@@ -204,23 +159,98 @@ ActivityStreams.prototype = {
       });
   },
 
-  /**
-   * Get from cache and response to content.
-   *
-   * @private
-   */
-  _processAndSendLinks(placesLinks, responseType, worker, options) {
-    const {append} = options || {};
-    // If the type is append, that is, the user is scrolling through pages,
-    // do not add these to the master store
-    const skipMasterStore = append;
+  _initializeAppData() {
+    this._asyncBuildPlacesCache();
+    this._refreshAppState();
+  },
 
-    const cachedLinks = this._processLinks(placesLinks, responseType, options);
+  _setUpPageWorker(store) {
+    this._pageWorker = new PageWorker({store});
+    this._pageWorker.connect();
+  },
 
-    cachedLinks.then(linksToSend => {
-      const action = am.actions.Response(responseType, linksToSend, {append});
-      this.send(action, worker, skipMasterStore);
+  _initializePerfMeter() {
+    this._perfMeter = new PerfMeter(this.appURLs);
+  },
+
+  _initializeAppURLHider() {
+    this._appURLHider = new AppURLHider(this.appURLs);
+  },
+
+  _initializeMemoizer() {
+    this._memoizer = new Memoizer();
+    this._memoized = this._get_memoized(this._memoizer);
+  },
+
+  _initializeBaselineRecommender(experimentProvider) {
+    // This is instantiated with a recommender based on weights if pref is true. Used to score highlights.
+    this._baselineRecommender = null;
+    if (experimentProvider.data.weightedHighlights) {
+      return this._loadRecommender();
+    }
+    return Promise.resolve();
+  },
+
+  _initializePreviewProvier(experimentProvider, metadataStore, tabTracker) {
+    this._previewProvider = new PreviewProvider(tabTracker, metadataStore, experimentProvider);
+  },
+
+  _initializePrefProvider() {
+    this._prefsProvider = new PrefsProvider({
+      simplePrefs,
+      broadcast: this.broadcast.bind(this),
+      send: this.send.bind(this)
     });
+    this._prefsProvider.init();
+  },
+
+  _initializeShareProvider(tabTracker) {
+    if (this.options.shareProvider) {
+      this._shareProvider = this.options.shareProvider;
+    } else {
+      this._shareProvider = new ShareProvider({eventTracker: tabTracker});
+    }
+    this._shareProvider.init();
+  },
+
+  _initializeRecommendationProvider(experimentProvider, previewProvider, tabTracker) {
+    // Only create RecommendationProvider if they are in the experiment
+    this._recommendationProvider = null;
+    if (experimentProvider.data.recommendedHighlight) {
+      if (!this.options.recommendationProvider) {
+        this._recommendationProvider = new RecommendationProvider(previewProvider, tabTracker);
+      } else {
+        this._recommendationProvider = this.options.recommendationProvider;
+      }
+      this._recommendationProvider.init();
+      if (simplePrefs.prefs.recommendations) {
+        this._recommendationProvider.asyncSetRecommendedContent();
+      }
+      this._refreshRecommendations(this.options.recommendationTTL);
+    }
+  },
+
+  _initializeSearchProvider() {
+    if (!this.options.searchProvider) {
+      this._searchProvider = new SearchProvider();
+    } else {
+      this._searchProvider = this.options.searchProvider;
+    }
+    this._searchProvider.init();
+  },
+
+  _initializePageScraper(experimentProvider, previewProvider, tabTracker) {
+    this._pageScraper = null;
+
+    if (experimentProvider.data.localMetadata) {
+      simplePrefs.prefs.pageScraper = true;
+      if (!this.options.pageScraper) {
+        this._pageScraper = new PageScraper(previewProvider, tabTracker);
+      } else {
+        this._pageScraper = this.options.pageScraper;
+      }
+      this._pageScraper.init();
+    }
   },
 
   /**
@@ -258,28 +288,20 @@ ActivityStreams.prototype = {
       this._processAndDispatchLinks(links, "HIGHLIGHTS_LINKS_RESPONSE");
     });
 
-    // Bookmarks
-    provider.getRecentBookmarks().then(links => {
-      this._processAndDispatchLinks(links, "RECENT_BOOKMARKS_RESPONSE");
-    });
-
     // Search
-    SearchProvider.search.asyncGetCurrentState().then(state => {
-      let currentEngine = JSON.stringify(state.currentEngine);
-      state.currentEngine = currentEngine;
-      this._store.dispatch(am.actions.Response("SEARCH_STATE_RESPONSE", state));
-    });
+    let state = this._searchProvider.currentState;
+    let currentEngine = JSON.stringify(state.currentEngine);
+    state.currentEngine = currentEngine;
+    this._store.dispatch(am.actions.Response("SEARCH_STATE_RESPONSE", state));
 
-    const strings = SearchProvider.search.searchSuggestionUIStrings;
+    const strings = this._searchProvider.searchSuggestionUIStrings;
     this._store.dispatch(am.actions.Response("SEARCH_UISTRINGS_RESPONSE", strings));
 
     this._store.dispatch(am.actions.Response("EXPERIMENTS_RESPONSE", this._experimentProvider.data));
 
     this._store.dispatch(am.actions.Response("PREFS_RESPONSE", simplePrefs.prefs));
 
-    // Share
-    // Note: there is a race condition here, which should be resolved in https://github.com/mozilla/activity-stream/issues/1314
-    this._store.dispatch(am.actions.Response("SHARE_PROVIDERS_RESPONSE", this._shareProvider.socialProviders || []));
+    this._store.dispatch(am.actions.Response("SHARE_PROVIDERS_RESPONSE", this._shareProvider.socialProviders));
   },
 
   _respondOpenWindow({msg}) {
@@ -299,10 +321,10 @@ ActivityStreams.prototype = {
   _loadRecommender() {
     // Only need to load history items once per session.
     if (this._baselineRecommender !== null) {
-      return;
+      return Promise.resolve();
     }
 
-    this._memoized.getAllHistoryItems().then(historyItems => {
+    return this._memoized.getAllHistoryItems().then(historyItems => {
       let highlightsCoefficients = this._loadWeightedHighlightsCoefficients();
       this._baselineRecommender = new Recommender(historyItems, {highlightsCoefficients});
     });
@@ -328,16 +350,6 @@ ActivityStreams.prototype = {
    */
   _respondToPlacesRequests({msg, worker}) {
     switch (msg.type) {
-      case am.type("RECENT_BOOKMARKS_REQUEST"):
-        PlacesProvider.links.getRecentBookmarks(msg.data).then(links => {
-          this._processAndSendLinks(links, "RECENT_BOOKMARKS_RESPONSE", worker, msg.meta);
-        });
-        break;
-      case am.type("RECENT_LINKS_REQUEST"):
-        PlacesProvider.links.getRecentLinks(msg.data).then(links => {
-          this._processAndSendLinks(links, "RECENT_LINKS_RESPONSE", worker, msg.meta);
-        });
-        break;
       case am.type("NOTIFY_BOOKMARK_ADD"):
         PlacesProvider.links.asyncAddBookmark(msg.data);
         break;
@@ -352,9 +364,6 @@ ActivityStreams.prototype = {
         break;
       case am.type("NOTIFY_UNBLOCK_URL"):
         PlacesProvider.links.unblockURL(msg.data);
-        break;
-      case am.type("NOTIFY_UNBLOCK_ALL"):
-        PlacesProvider.links.unblockAll();
         break;
       case am.type("NOTIFY_BLOCK_RECOMMENDATION"):
         this._recommendationProvider.setBlockedRecommendation(msg.data);
@@ -387,12 +396,12 @@ ActivityStreams.prototype = {
     const browser = gBrowser.selectedBrowser;
     switch (msg.type) {
       case am.type("NOTIFY_PERFORM_SEARCH"):
-        SearchProvider.search.asyncPerformSearch(browser, msg.data);
+        this._searchProvider.asyncPerformSearch(browser, msg.data);
         break;
       case am.type("SEARCH_SUGGESTIONS_REQUEST"):
         Task.spawn(function*() {
           try {
-            const suggestions = yield SearchProvider.search.asyncGetSuggestions(browser, msg.data);
+            const suggestions = yield this._searchProvider.asyncGetSuggestions(browser, msg.data);
             if (suggestions) {
               this.send(am.actions.Response("SEARCH_SUGGESTIONS_RESPONSE", suggestions), worker, true);
             }
@@ -403,15 +412,15 @@ ActivityStreams.prototype = {
         break;
       case am.type("NOTIFY_REMOVE_FORM_HISTORY_ENTRY"): {
         let entry = msg.data;
-        SearchProvider.search.removeFormHistoryEntry(browser, entry);
+        this._searchProvider.removeFormHistoryEntry(browser, entry);
         break;
       }
       case am.type("NOTIFY_MANAGE_ENGINES"):
-        SearchProvider.search.manageEngines(browser);
+        this._searchProvider.manageEngines(browser);
         break;
       case am.type("SEARCH_CYCLE_CURRENT_ENGINE_REQUEST"): {
-        SearchProvider.search.cycleCurrentEngine(msg.data);
-        let engine = SearchProvider.search.currentEngine;
+        this._searchProvider.cycleCurrentEngine(msg.data);
+        let engine = this._searchProvider.currentEngine;
         this.send(am.actions.Response("SEARCH_CYCLE_CURRENT_ENGINE_RESPONSE", {currentEngine: engine}), worker);
         break;
       }
@@ -473,12 +482,6 @@ ActivityStreams.prototype = {
     this._tabTracker.handleUserEvent(msg.data);
   },
 
-  _handleRatingEvent({msg}) {
-    let metadataSource = simplePrefs.prefs.metadataSource;
-    let data = Object.assign({}, msg.data, {metadataSource});
-    this._tabTracker.handleRatingEvent(data);
-  },
-
   _respondToRecommendationToggle() {
     simplePrefs.prefs.recommendations = !simplePrefs.prefs.recommendations;
   },
@@ -496,8 +499,6 @@ ActivityStreams.prototype = {
         return this._onRouteChange(args);
       case am.type("NOTIFY_USER_EVENT"):
         return this._handleUserEvent(args);
-      case am.type("NOTIFY_RATE_METADATA"):
-        return this._handleRatingEvent(args);
       case am.type("EXPERIMENTS_REQUEST"):
         return this._respondToExperimentsRequest(args);
       case am.type("NOTIFY_TOGGLE_RECOMMENDATIONS"):
@@ -518,7 +519,7 @@ ActivityStreams.prototype = {
     PLACES_CHANGES_EVENTS.forEach(event => PlacesProvider.links.on(event, this._handlePlacesChanges));
 
     this._handleCurrentEngineChanges = this._handleCurrentEngineChanges.bind(this);
-    SearchProvider.search.on("browser-search-engine-modified", this._handleCurrentEngineChanges);
+    this._searchProvider.on("browser-search-engine-modified", this._handleCurrentEngineChanges);
 
     // This is a collection of handlers that receive messages from content
     this._contentToAddonHandlers = (msgName, args) => {
@@ -553,7 +554,7 @@ ActivityStreams.prototype = {
   _pageScraperListener() {
     let newEnabledValue = simplePrefs.prefs.pageScraper;
     if (newEnabledValue && !this._pageScraper) {
-      this._pageScraper = new PageScraper(this._previewProvider);
+      this._pageScraper = new PageScraper(this._previewProvider, this._tabTracker);
       this._pageScraper.init();
     } else if (!newEnabledValue && this._pageScraper) {
       this._pageScraper.uninit();
@@ -583,7 +584,7 @@ ActivityStreams.prototype = {
    */
   _removeListeners() {
     PLACES_CHANGES_EVENTS.forEach(event => PlacesProvider.links.off(event, this._handlePlacesChanges));
-    SearchProvider.search.off("browser-search-engine-modified", this._handleCurrentEngineChanges);
+    this._searchProvider.off("browser-search-engine-modified", this._handleCurrentEngineChanges);
     this.off(CONTENT_TO_ADDON, this._contentToAddonHandlers);
     simplePrefs.off("", this._weightedHiglightsListeners);
     simplePrefs.off("pageScraper", this._pageScraperListener);
@@ -597,7 +598,6 @@ ActivityStreams.prototype = {
     return {
       getTopFrecentSites: cache.memoize("getTopFrecentSites", PlacesProvider.links.getTopFrecentSites.bind(linksObj)),
       getAllHistoryItems: cache.memoize("getAllHistoryItems", PlacesProvider.links.getAllHistoryItems.bind(linksObj)),
-      getRecentBookmarks: cache.memoize("getRecentBookmarks", PlacesProvider.links.getRecentBookmarks.bind(linksObj)),
       getRecentLinks: cache.memoize("getRecentLinks", PlacesProvider.links.getRecentLinks.bind(linksObj)),
       getRecentlyVisited: cache.memoize("getRecentlyVisited", PlacesProvider.links.getRecentlyVisited.bind(linksObj)),
       getHighlightsLinks: cache.memoize("getHighlightsLinks", PlacesProvider.links.getHighlightsLinks.bind(linksObj)),
@@ -618,7 +618,6 @@ ActivityStreams.prototype = {
         let opt = {replace: true};
         yield Promise.all([
           this._memoized.getTopFrecentSites(opt),
-          this._memoized.getRecentBookmarks(opt),
           this._memoized.getAllHistoryItems(opt),
           this._memoized.getRecentLinks(opt),
           this._memoized.getRecentlyVisited(opt),
@@ -725,15 +724,6 @@ ActivityStreams.prototype = {
     }
   },
 
-  _setupButton() {
-    this._button = ActionButton({
-      id: "activity-streams-link",
-      label: "Activity Stream",
-      icon: data.url("content/img/list-icon.svg"),
-      onClick: () => tabs.open(`${this.options.pageURL}#/timeline`)
-    });
-  },
-
   /*
    * Replace the home page with the ActivityStream new tab page.
    */
@@ -767,9 +757,7 @@ ActivityStreams.prototype = {
       let baseUrl = this.options.pageURL;
       this._appURLs = [
         baseUrl,
-        `${baseUrl}#/`,
-        `${baseUrl}#/timeline`,
-        `${baseUrl}#/timeline/bookmarks`
+        `${baseUrl}#/`
       ];
     }
     return this._appURLs;
@@ -793,6 +781,7 @@ ActivityStreams.prototype = {
         clearTimeout(this._newRecommendationTimeoutID);
       }
       this._previewProvider.uninit();
+      this._searchProvider.uninit();
       if (this._recommendationProvider) {
         this._recommendationProvider.uninit();
       }
@@ -804,7 +793,6 @@ ActivityStreams.prototype = {
       this.workers.clear();
       this._removeListeners();
       this._pagemod.destroy();
-      this._button.destroy();
       this._tabTracker.uninit();
       this._telemetrySender.uninit();
       this._appURLHider.uninit();
@@ -814,6 +802,7 @@ ActivityStreams.prototype = {
       this._prefsProvider.destroy();
       this._shareProvider.uninit(reason);
       this._experimentProvider.destroy();
+      this._pageWorker.destroy();
     };
 
     switch (reason) {
@@ -821,12 +810,14 @@ ActivityStreams.prototype = {
       case "disable":
       case "uninstall":
         this._tabTracker.handleUserEvent({event: reason});
+        this._experimentProvider.clearPrefs();
         this._unsetHomePage();
         defaultUnload();
         break;
       default:
         defaultUnload();
     }
+    this._isUnloaded = true;
   }
 };
 

@@ -1,6 +1,8 @@
 "use strict";
 
 const {Cc, Ci, Cu, components} = require("chrome");
+const {TelemetrySender} = require("addon/TelemetrySender");
+const {TabTracker} = require("addon/TabTracker");
 const {ActivityStreams} = require("addon/ActivityStreams");
 const {stack: Cs} = components;
 
@@ -51,6 +53,46 @@ function doDump(object, trailer) {
   dump(JSON.stringify(object, null, 1) + trailer); // eslint-disable-line no-undef
 }
 
+function getTestRecommendationProvider() {
+  return {
+    init() {},
+    asyncSetRecommendedContent() {},
+    setBlockedRecommendation() {},
+    getRecommendation() {},
+    uninit() {}
+  };
+}
+
+function getTestSearchProvider() {
+  return {
+    init() {},
+    uninit() {},
+    on() {},
+    off() {},
+    get currentState() {
+      return {
+        engines: [],
+        currentEngine: this.currentEngine
+      };
+    },
+    get searchSuggestionUIStrings() {
+      return {
+        "searchHeader": "%S Search",
+        "searchForSomethingWith": "Search for",
+        "searchSettings": "Change Search Settings",
+        "searchPlaceholder": "Search the Web"
+      };
+    },
+    get currentEngine() {
+      return {
+        name: "",
+        iconBuffer: []
+      };
+    },
+    QueryInterface: {}
+  };
+}
+
 function getTestActivityStream(options = {}) {
   const mockMetadataStore = {
     asyncConnect() {return Promise.resolve();},
@@ -61,17 +103,26 @@ function getTestActivityStream(options = {}) {
   };
   const mockShareProvider = {
     init() {},
-    uninit() {}
+    uninit() {},
+    socialProviders: []
   };
   if (!options.mockShareProvider) {
     options.shareProvider = mockShareProvider;
   }
   const mockPageScraper = {
+    options: {framescriptPath: ""},
     init() {},
-    uninit() {}
+    uninit() {},
+    _asyncParseAndSave() {}
   };
+
   options.pageScraper = mockPageScraper;
-  let mockApp = new ActivityStreams(mockMetadataStore, options);
+  options.searchProvider = getTestSearchProvider();
+  options.recommendationProvider = getTestRecommendationProvider();
+  const testTabTracker = new TabTracker(options);
+  const testTelemetrySender = new TelemetrySender();
+  let mockApp = new ActivityStreams(mockMetadataStore, testTabTracker, testTelemetrySender, options);
+  mockApp.init();
   return mockApp;
 }
 

@@ -9,7 +9,7 @@ const ReactDOM = require("react-dom");
 const TestUtils = require("react-addons-test-utils");
 const SiteIcon = require("components/SiteIcon/SiteIcon");
 const {mockData, faker, renderWithProvider} = require("test/test-utils");
-const fakeSpotlightItems = mockData.Spotlight.rows;
+const fakeSpotlightItems = mockData.Highlights.rows;
 const fakeSiteWithImage = faker.createSite();
 
 fakeSiteWithImage.bestImage = fakeSiteWithImage.images[0];
@@ -80,13 +80,6 @@ describe("SpotlightItem", () => {
   beforeEach(() => {
     instance = renderWithProvider(<SpotlightItem {...fakeSite} />);
     el = ReactDOM.findDOMNode(instance);
-  });
-
-  describe("rating system", () => {
-    it("should create a rating component", () => {
-      const rating = ReactDOM.findDOMNode(instance.refs.rating);
-      assert.ok(rating);
-    });
   });
 
   describe("valid sites", () => {
