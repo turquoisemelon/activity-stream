@@ -12,7 +12,6 @@ const privateBrowsing = require("sdk/private-browsing");
 const windows = require("sdk/windows").browserWindows;
 const prefService = require("sdk/preferences/service");
 const ss = require("sdk/simple-storage");
-const {Memoizer} = require("addon/Memoizer");
 const {PlacesProvider} = require("addon/PlacesProvider");
 const {SearchProvider} = require("addon/SearchProvider");
 const {ShareProvider} = require("addon/ShareProvider");
@@ -23,11 +22,13 @@ const {AppURLHider} = require("addon/AppURLHider");
 const am = require("common/action-manager");
 const {CONTENT_TO_ADDON, ADDON_TO_CONTENT} = require("common/event-constants");
 const {ExperimentProvider} = require("addon/ExperimentProvider");
-const {Recommender} = require("common/recommender/Recommender");
 const {PrefsProvider} = require("addon/PrefsProvider");
 const createStore = require("common/create-store");
 const PageWorker = require("addon/PageWorker");
 const {PageScraper} = require("addon/PageScraper");
+
+const FeedController = require("addon/lib/FeedController.js");
+const feeds = require("addon/Feeds/feeds.js");
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource:///modules/NewTabURL.jsm");
@@ -49,7 +50,6 @@ const DEFAULT_OPTIONS = {
   pageURL: data.url("content/activity-streams.html"),
   onAddWorker: null,
   onRemoveWorker: null,
-  placesCacheTimeout: 1800000, // every 30 minutes, rebuild/repopulate the cache
   recommendationTTL: 3600000, // every hour, get a new recommendation
   shareProvider: null,
   pageScraper: null,
@@ -76,13 +76,23 @@ function ActivityStreams(metadataStore, tabTracker, telemetrySender, options = {
   this._metadataStore = metadataStore;
   this._tabTracker = tabTracker;
   this._telemetrySender = telemetrySender;
-  this._populatingCache = {places: false};
   this._newTabURL = `${this.options.pageURL}#/`;
   Services.prefs.setIntPref("places.favicons.optimizeToDimension", 64);
   this._experimentProvider = new ExperimentProvider(
     options.experiments,
     options.rng
   );
+
+  this._feeds = new FeedController({
+    feeds,
+    // TODO: move this into Feeds. Requires previewProvider/tabTracker to be independent
+    getMetadata: (links, type) => {
+      const event = this._tabTracker.generateEvent({source: type});
+      return this._previewProvider.getLinkMetadata(links, event);
+    }
+  });
+  this._store = createStore({middleware: this._feeds.reduxMiddleware});
+  this._feeds.connectStore(this._store);
 }
 
 ActivityStreams.prototype = {
@@ -92,23 +102,18 @@ ActivityStreams.prototype = {
   _isUnloaded: false,
 
   init() {
-    let initializePromises = [];
-
-    this._store = createStore();
     this._initializePerfMeter();
     this._initializeAppURLHider();
-    this._initializeMemoizer();
 
     if (!this.options.shield_variant) {
       this._experimentProvider.init();
     }
-    this._tabTracker.init(this.appURLs, this._memoized, this._experimentProvider.experimentId);
+    this._tabTracker.init(this.appURLs, this._experimentProvider.experimentId, this._store);
     this._initializeSearchProvider();
     this._initializePreviewProvier(this._experimentProvider, this._metadataStore, this._tabTracker);
     this._initializePageScraper(this._experimentProvider, this._previewProvider, this._tabTracker);
     this._initializeRecommendationProvider(this._experimentProvider, this._previewProvider, this._tabTracker);
     this._initializeShareProvider(this._tabTracker);
-    initializePromises.push(this._initializeBaselineRecommender());
     this._initializePrefProvider();
 
     this._setupPageMod();
@@ -117,8 +122,8 @@ ActivityStreams.prototype = {
     this._setHomePage();
     this._setUpPageWorker(this._store);
 
-    // Wait for any asynchronous initializers to finish before loading app data
-    Promise.all(initializePromises).then(() => this._initializeAppData()).catch(err => Cu.reportError(err));
+    this._initializeAppData();
+    this._store.dispatch({type: "APP_INIT"});
   },
 
   /**
@@ -142,27 +147,13 @@ ActivityStreams.prototype = {
    * Broadcast a message to all workers
    */
   broadcast(action) {
+    this._store.dispatch(action);
     for (let worker of this.workers) {
-      this.send(action, worker);
+      this.send(action, worker, true);
     }
   },
 
-  /**
-   * Get from cache and dispatch to store
-   *
-   * @private
-   */
-  _processAndDispatchLinks(links, type) {
-    this._processLinks(links, type)
-      .then(result => {
-        const action = am.actions.Response(type, result);
-        this._store.dispatch(action);
-      })
-      .catch(err => Cu.reportError(err));
-  },
-
   _initializeAppData() {
-    this._asyncBuildPlacesCache();
     this._refreshAppState();
   },
 
@@ -182,18 +173,6 @@ ActivityStreams.prototype = {
 
   _initializeAppURLHider() {
     this._appURLHider = new AppURLHider(this.appURLs);
-  },
-
-  _initializeMemoizer() {
-    this._memoizer = new Memoizer();
-    this._memoized = this._get_memoized(this._memoizer);
-  },
-
-  _initializeBaselineRecommender() {
-    // This is instantiated with a recommender based on weights which
-    // is used to score highlights.
-    this._baselineRecommender = null;
-    return this._loadRecommender();
   },
 
   _initializePreviewProvier(experimentProvider, metadataStore, tabTracker) {
@@ -264,34 +243,6 @@ ActivityStreams.prototype = {
    *                    TODO: Refactor this in to a different functions that handle refreshing data separately
    */
   _refreshAppState() {
-    const provider = this._memoized;
-
-    // WeightedHighlights
-    if (this._baselineRecommender === null) {
-      this._store.dispatch(am.actions.Response("WEIGHTED_HIGHLIGHTS_RESPONSE", []));
-    } else {
-      provider.getRecentlyVisited().then(highlightsLinks => {
-        this._processLinks(highlightsLinks, "WEIGHTED_HIGHLIGHTS_RESPONSE").then(highlightsWithMeta => {
-          this._store.dispatch(am.actions.Response("WEIGHTED_HIGHLIGHTS_RESPONSE", this._baselineRecommender.scoreEntries(highlightsWithMeta)));
-        }).catch(err => Cu.reportError(err));
-      }).catch(err => Cu.reportError(err));
-    }
-
-    // Top Sites
-    provider.getTopFrecentSites().then(links => {
-      this._processAndDispatchLinks(links, "TOP_FRECENT_SITES_RESPONSE");
-    }).catch(err => Cu.reportError(err));
-
-    // Recent History
-    provider.getRecentLinks().then(links => {
-      this._processAndDispatchLinks(links, "RECENT_LINKS_RESPONSE");
-    }).catch(err => Cu.reportError(err));
-
-    // Highlights
-    provider.getHighlightsLinks().then(links => {
-      this._processAndDispatchLinks(links, "HIGHLIGHTS_LINKS_RESPONSE");
-    }).catch(err => Cu.reportError(err));
-
     // Search
     let state = this._searchProvider.currentState;
     let currentEngine = JSON.stringify(state.currentEngine);
@@ -318,37 +269,6 @@ ActivityStreams.prototype = {
   },
 
   /**
-   * Instantiate the recommender that scores the highlights items.
-   * @private
-   */
-  _loadRecommender() {
-    // Only need to load history items once per session.
-    if (this._baselineRecommender !== null) {
-      return Promise.resolve();
-    }
-
-    return this._memoized.getAllHistoryItems().then(historyItems => {
-      let highlightsCoefficients = this._loadWeightedHighlightsCoefficients();
-      this._baselineRecommender = new Recommender(historyItems, {highlightsCoefficients});
-    }).catch(err => Cu.reportError(err));
-  },
-
-  _loadWeightedHighlightsCoefficients() {
-    try {
-      let value = JSON.parse(simplePrefs.prefs.weightedHighlightsCoefficients);
-      if (Array.isArray(value)) {
-        return value;
-      }
-
-      Cu.reportError("Coefficients values must be a valid array");
-    } catch (e) {
-      Cu.reportError(e);
-    }
-
-    return null;
-  },
-
-  /**
    * Responds to places requests
    */
   _respondToPlacesRequests({msg, worker}) {
@@ -372,22 +292,6 @@ ActivityStreams.prototype = {
         this._recommendationProvider.setBlockedRecommendation(msg.data);
         break;
     }
-  },
-
-  /**
-   * Process the passed in links, save them.
-   *
-   * @private
-   */
-  _processLinks(placesLinks, responseType, options) {
-    let {skipPreviewRequest} = options || {};
-    const event = this._tabTracker.generateEvent({source: responseType});
-    let inExperiment = this._experimentProvider.data.recommendedHighlight;
-    let isAHighlight = responseType === "HIGHLIGHTS_LINKS_RESPONSE";
-    let shouldGetRecommendation = isAHighlight && simplePrefs.prefs.recommendations && inExperiment;
-    let recommendation = shouldGetRecommendation ? this._recommendationProvider.getRecommendation() : null;
-    let linksToProcess = placesLinks.concat([recommendation]).filter(link => link);
-    return this._previewProvider.getLinkMetadata(linksToProcess, event, skipPreviewRequest).catch(err => Cu.reportError(err));
   },
 
   /**
@@ -456,12 +360,6 @@ ActivityStreams.prototype = {
    * Handles changes to places
    */
   _handlePlacesChanges(eventName, data) {
-    // note: this will execute for each of the 3 notifications that occur when
-    // adding a visit: frecency:-1, frecency: real frecency, title
-    if (this._populatingCache && !this._populatingCache.places) {
-      this._asyncBuildPlacesCache();
-    }
-
     switch (eventName) {
       case "bookmarkAdded":
         this.broadcast(am.actions.Response("RECEIVE_BOOKMARK_ADDED", data));
@@ -544,10 +442,7 @@ ActivityStreams.prototype = {
       this._prefsProvider.actionHandler(args);
     };
     this.on(CONTENT_TO_ADDON, this._contentToAddonHandlers);
-
-    this._weightedHiglightsListeners = this._weightedHiglightsListeners.bind(this);
     this._pageScraperListener = this._pageScraperListener.bind(this);
-    simplePrefs.on("", this._weightedHiglightsListeners);
     simplePrefs.on("pageScraper", this._pageScraperListener);
   },
 
@@ -566,81 +461,14 @@ ActivityStreams.prototype = {
   },
 
   /**
-   * Listen for changes to weighted highlights prefs.
-   *
-   * @param {String} prefName - name of the pref that changed.
-   * @private
-   */
-  _weightedHiglightsListeners(prefName) {
-    // Update the feature weights
-    if (prefName === "weightedHighlightsCoefficients") {
-      let highlightsCoefficients = this._loadWeightedHighlightsCoefficients();
-      this._baselineRecommender.updateOptions({highlightsCoefficients});
-    }
-    this._loadRecommender();
-  },
-
-  /**
    * Turns off various listeners for the pages
    */
   _removeListeners() {
     PLACES_CHANGES_EVENTS.forEach(event => PlacesProvider.links.off(event, this._handlePlacesChanges));
     this._searchProvider.off("browser-search-engine-modified", this._handleCurrentEngineChanges);
     this.off(CONTENT_TO_ADDON, this._contentToAddonHandlers);
-    simplePrefs.off("", this._weightedHiglightsListeners);
     simplePrefs.off("pageScraper", this._pageScraperListener);
   },
-
-  /**
-   * Returns an object of functions with results cached
-   */
-  _get_memoized(cache) {
-    let linksObj = PlacesProvider.links;
-    return {
-      getTopFrecentSites: cache.memoize("getTopFrecentSites", PlacesProvider.links.getTopFrecentSites.bind(linksObj)),
-      getAllHistoryItems: cache.memoize("getAllHistoryItems", PlacesProvider.links.getAllHistoryItems.bind(linksObj)),
-      getRecentLinks: cache.memoize("getRecentLinks", PlacesProvider.links.getRecentLinks.bind(linksObj)),
-      getRecentlyVisited: cache.memoize("getRecentlyVisited", PlacesProvider.links.getRecentlyVisited.bind(linksObj)),
-      getHighlightsLinks: cache.memoize("getHighlightsLinks", PlacesProvider.links.getHighlightsLinks.bind(linksObj)),
-      getHistorySize: cache.memoize("getHistorySize", PlacesProvider.links.getHistorySize.bind(linksObj)),
-      getBookmarksSize: cache.memoize("getBookmarksSize", PlacesProvider.links.getBookmarksSize.bind(linksObj))
-    };
-  },
-
-  /**
-   * Builds a places pageload cache
-   *
-   * Requires this._memoized to have been initialized.
-   */
-  _asyncBuildPlacesCache: Task.async(function*() {
-    if (simplePrefs.prefs["query.cache"]) {
-      if (this._populatingCache && !this._populatingCache.places) {
-        this._populatingCache.places = true;
-        let opt = {replace: true};
-        yield Promise.all([
-          this._memoized.getTopFrecentSites(opt),
-          this._memoized.getAllHistoryItems(opt),
-          this._memoized.getRecentLinks(opt),
-          this._memoized.getRecentlyVisited(opt),
-          this._memoized.getHighlightsLinks(opt),
-          this._memoized.getHistorySize(opt),
-          this._memoized.getBookmarksSize(opt)
-        ]).catch(err => Cu.reportError(err));
-        this._populatingCache.places = false;
-        Services.obs.notifyObservers(null, "activity-streams-places-cache-complete", null);
-      }
-
-      // Call myself when cache expires to repopulate.
-      // This is needed because some of the queries are time dependent (for example,
-      // highlights excludes links from the past 30 minutes).
-      if (this._placesCacheTimeoutID) {
-        clearTimeout(this._placesCacheTimeoutID);
-      }
-      this._placesCacheTimeoutID = setTimeout(() => {
-        this._asyncBuildPlacesCache();
-      }, this.options.placesCacheTimeout);
-    }
-  }),
 
   /**
     * Start a timer to fetch a new recommendation every hour. This will only
@@ -777,7 +605,6 @@ ActivityStreams.prototype = {
    */
   unload(reason) { // eslint-disable-line no-unused-vars
     let defaultUnload = () => {
-      clearTimeout(this._placesCacheTimeoutID);
       if (this._newRecommendationTimeoutID) {
         clearTimeout(this._newRecommendationTimeoutID);
       }
@@ -798,8 +625,6 @@ ActivityStreams.prototype = {
       this._telemetrySender.uninit();
       this._appURLHider.uninit();
       this._perfMeter.uninit();
-      this._memoizer.uninit();
-      this._populatingCache = {places: false};
       this._prefsProvider.destroy();
       this._shareProvider.uninit(reason);
       this._experimentProvider.destroy();

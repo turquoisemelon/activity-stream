@@ -1,13 +1,12 @@
 const React = require("react");
 const {connect} = require("react-redux");
 const {selectNewTabSites} = require("selectors/selectors");
-const {selectSpotlight} = require("selectors/oldSpotlightSelectors");
 const {SpotlightItem} = require("components/Spotlight/Spotlight");
-const GroupedActivityFeed = require("components/ActivityFeed/ActivityFeed");
 const TopSites = require("components/TopSites/TopSites");
 const faker = require("test/faker");
 const sizeof = require("object-sizeof");
 const {ShowAllHints} = require("common/action-manager").actions;
+const experimentDefinitions = require("../../../experiments.json");
 
 // Only include this in DEVELOPMENT builds
 let JSONTree;
@@ -30,7 +29,7 @@ function Viewer(props) {
 const DebugPage = React.createClass({
   getInitialState() {
     return {
-      component: "Spotlight",
+      component: "TopSites",
       dataSource: "Highlights",
       highlightData: [
         faker.createSpotlightItem(),
@@ -47,6 +46,33 @@ const DebugPage = React.createClass({
 
     return (<main className="debug-page">
       <div className="new-tab-wrapper">
+
+        <section className="experiments">
+          <h2>Experiments</h2>
+          <p>
+            To override these experiments, check <code>about:config</code> for <code>extensions.@activity-streams.experiments.prefName</code>, where <code>prefName</code> is the name of the pref in this table.
+          </p>
+          <table className="experiment-table">
+            <tr>
+              <th>Experiment</th>
+              <th>Pref name</th>
+              <th>Description</th>
+              <th>Value</th>
+            </tr>
+            {Object.keys(experimentDefinitions)
+              .filter(id => experimentDefinitions[id].active)
+              .map(id => {
+                const valueAsString = JSON.stringify(this.props.raw.Experiments.values[id]);
+                return (<tr key={id}>
+                  <td>{experimentDefinitions[id].name}</td>
+                  <td><code>{id}</code></td>
+                  <td>{experimentDefinitions[id].description}</td>
+                  <td>{valueAsString}</td>
+                </tr>);
+              })}
+          </table>
+        </section>
+
         <section>
           <h2>State as plain text</h2>
           <p>Apx. current size: {Math.round(sizeof(this.props.raw) / 1024)}kb</p>
@@ -66,9 +92,7 @@ const DebugPage = React.createClass({
             <div className="form-group">
               <label>UI Component</label>
               <select value={this.state.component} onChange={e => this.setState({component: e.target.value})}>
-                <option value={"Spotlight"}>Spotlight</option>
                 <option value={"TopSites"}>Top Sites</option>
-                <option value={"ActivityFeed"}>Activity Feed</option>
               </select>
             </div>
             <div className="form-group">
@@ -79,25 +103,8 @@ const DebugPage = React.createClass({
             </div>
           </div>
           <div>
-            {this.state.component === "Spotlight" &&
-              <div className="spotlight">
-                {selectSpotlight({
-                  Highlights: this.props.raw[this.state.dataSource],
-                  WeightedHighlights: this.props.raw[this.state.dataSource],
-                  Prefs: this.props.raw.Prefs,
-                  Experiments: this.props.raw.Experiments
-                }).rows.map((item, i) =>
-                  (<SpotlightItem key={i} {...item} />))
-                }
-              </div>
-            }
             {this.state.component === "TopSites" &&
               <TopSites
-                sites={this.props.raw[this.state.dataSource].rows}
-                length={this.props.raw[this.state.dataSource].rows.length} />
-            }
-            {this.state.component === "ActivityFeed" &&
-              <GroupedActivityFeed
                 sites={this.props.raw[this.state.dataSource].rows}
                 length={this.props.raw[this.state.dataSource].rows.length} />
             }

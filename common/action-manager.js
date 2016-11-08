@@ -3,8 +3,8 @@ const ActionManager = require("./ActionManager");
 const eventConstants = require("./event-constants");
 
 const am = new ActionManager([
-  "WEIGHTED_HIGHLIGHTS_REQUEST",
-  "WEIGHTED_HIGHLIGHTS_RESPONSE",
+  "HIGHLIGHTS_REQUEST",
+  "HIGHLIGHTS_RESPONSE",
   "TOP_FRECENT_SITES_REQUEST",
   "TOP_FRECENT_SITES_RESPONSE",
   "RECEIVE_CURRENT_ENGINE",
@@ -52,7 +52,9 @@ const am = new ActionManager([
   "NOTIFY_COPY_URL",
   "NOTIFY_EMAIL_URL",
   "ENABLE_ALL_HINTS",
-  "DISABLE_HINT"
+  "DISABLE_HINT",
+  "APP_INIT",
+  "PLACES_STATS_UPDATED"
 ]);
 
 // This is a a set of actions that have sites in them,
@@ -157,10 +159,6 @@ function RequestExperiments() {
   return RequestExpect("EXPERIMENTS_REQUEST", "EXPERIMENTS_RESPONSE");
 }
 
-function RequestWeightedHighlights() {
-  return RequestExpect("WEIGHTED_HIGHLIGHTS_REQUEST", "WEIGHTED_HIGHLIGHTS_RESPONSE");
-}
-
 function NotifyBookmarkAdd(url) {
   return Notify("NOTIFY_BOOKMARK_ADD", url);
 }
@@ -253,6 +251,17 @@ function ShowAllHints() {
   return Notify("ENABLE_ALL_HINTS");
 }
 
+function PlacesStatsUpdate(historySize, bookmarksSize) {
+  const data = {};
+  if (typeof historySize !== "undefined") {
+    data.historySize = historySize;
+  }
+  if (typeof bookmarksSize !== "undefined") {
+    data.bookmarksSize = bookmarksSize;
+  }
+  return {type: "PLACES_STATS_UPDATED", data};
+}
+
 am.defineActions({
   Notify,
   Response,
@@ -263,7 +272,6 @@ am.defineActions({
   RequestSearchStrings,
   RequestSearchSuggestions,
   RequestExperiments,
-  RequestWeightedHighlights,
   NotifyBlockURL,
   NotifyUnblockURL,
   NotifyBookmarkAdd,
@@ -287,7 +295,8 @@ am.defineActions({
   NotifyEmailUrl,
   NotifyShareUrl,
   ShowAllHints,
-  DisableHint
+  DisableHint,
+  PlacesStatsUpdate
 });
 
 module.exports = am;
