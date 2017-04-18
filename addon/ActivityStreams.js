@@ -2,6 +2,7 @@
 
 "use strict";
 
+
 const {Cu} = require("chrome");
 const self = require("sdk/self");
 const simplePrefs = require("sdk/simple-prefs");
